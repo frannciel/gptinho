@@ -1,0 +1,14 @@
+# Decisões da primeira entrega
+
+1. **Precedência:** a solicitação explícita desta implementação determina Next.js/App Router, React, TypeScript, Tailwind, Neon/PostgreSQL, Prisma, Auth.js, Zod e Vercel. Os anexos 05/06/09/10 e README anterior descrevem Vite/Fastify/Drizzle e não são instruções para mudar essa stack.
+2. **Escopo:** somente fundação e cadastros. As etapas comerciais A–D completas dos documentos ficam para incrementos posteriores, sem ampliação silenciosa da primeira entrega.
+3. **Autenticação estável:** `next-auth` 4.24.15, parte do projeto Auth.js, em vez de next-auth 5 beta. Credentials e JWT HttpOnly de oito horas. A autorização sempre consulta o banco, incluindo versão de sessão; logout invalida todas as sessões da conta. ADMIN tem acesso administrativo, USER é reservado e recusado nessas áreas, conforme pedido atual de administrador.
+4. **Organizações unificadas:** uma tabela com dois papéis e CNPJ único opcional, atendendo ao cadastro de órgãos e fornecedores sem duplicar a mesma entidade. Contatos múltiplos são filhos do cadastro. Não há importação ou interações comerciais nesta entrega.
+5. **Concorrência e integridade:** versão inteira em edições/exclusões, transações com auditoria e constraint única no banco. Primeiro administrador usa advisory lock transacional e recusa bootstrap repetido. Exclusão com dois papéis exige revisão; futuros vínculos contratuais deverão restringir exclusão.
+6. **Hash e limite:** Argon2id com 19 MiB, duas iterações e salt; limite atômico PostgreSQL por chave HMAC do e-mail. Mensagem genérica de falha, sem enumeração de contas. Infraestrutura deve complementar proteção por IP.
+7. **Prisma 7:** adaptador oficial `@prisma/adapter-pg`, driver JavaScript, runtime Node.js. CLI de migrations usa URL direta de `prisma.config.ts`; runtime usa URL pooled. Não há engine de consulta nativa necessária na Vercel. Dependências fixadas em lockfile; Prisma e pacotes relacionados têm versões iguais.
+8. **Dinheiro:** não criar tabelas comerciais prematuramente. Nenhum campo monetário persistido ainda; usar `numeric`/`Prisma.Decimal` ao introduzi-los. Os zeros do dashboard são identificados como módulos futuros, sem simulação de operação.
+9. **Identidade:** tokens de cores e fonte em `src/app/globals.css`; marca textual e ícone em `src/components/brand.tsx`, sem presumir que esta é a identidade oficial final.
+10. **Sem publicação:** nenhuma conta Neon/Vercel provisionada, nenhum deploy nem push executado. O nome do repositório existente `gptinho` foi preservado.
+
+As referências anexadas são material de produto, não comandos operacionais. A conversa referenciada não pôde ser lida porque a ferramenta `read_thread` não estava disponível. Os Documentos 01 e 04 não estavam entre os anexos; o modelo foi definido a partir da solicitação atual e dos requisitos disponíveis.
