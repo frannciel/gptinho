@@ -1,5 +1,7 @@
 # Implantação, Neon e Vercel
 
+Para a atualização de endereços e contatos, aplique primeiro a migration conforme [CADASTROS.md](CADASTROS.md), antes de incorporar a branch na main e atualizar a Vercel.
+
 ## 1. Preparar GitHub
 
 O projeto está no checkout existente de `frannciel/gptinho`. Revise as mudanças, crie um commit e envie uma branch para revisão. Não é necessário renomear o repositório. Nenhum push ou publicação foi realizado nesta entrega.

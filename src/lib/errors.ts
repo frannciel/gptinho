@@ -3,21 +3,42 @@ import { ZodError } from "zod";
 import type { ActionResult } from "./validation";
 export class BusinessError extends Error {}
 export function actionError(error: unknown): ActionResult {
-  if (error instanceof ZodError)
+  if (error instanceof ZodError) {
+    const errors = error.flatten().fieldErrors as Record<string, string[]>;
+    for (const issue of error.issues) {
+      if (issue.path.length > 1)
+        (errors[issue.path.join(".")] ??= []).push(issue.message);
+    }
     return {
       ok: false,
       message: "Revise os campos indicados.",
-      errors: error.flatten().fieldErrors as Record<string, string[]>,
+      errors,
     };
+  }
   if (error instanceof BusinessError)
     return { ok: false, message: error.message };
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
-    if (error.code === "P2002")
+    if (error.code === "P2002") {
+      const contactEmail =
+        error.meta?.modelName === "Contact" ||
+        JSON.stringify(error.meta?.target ?? "").includes("email");
+      if (contactEmail)
+        return {
+          ok: false,
+          message:
+            "Já existe uma pessoa de contato cadastrada com este e-mail. Edite o contato existente.",
+          errors: {
+            contacts: [
+              "Cada e-mail de contato pode ser cadastrado apenas uma vez no sistema.",
+            ],
+          },
+        };
       return {
         ok: false,
         message:
           "Este CNPJ já está cadastrado. Edite a organização existente para adicionar outro papel.",
       };
+    }
     if (error.code === "P2003")
       return {
         ok: false,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { BRAZIL_STATES } from "./input-masks";
 export function isValidCnpj(value: string) {
   if (!/^[0-9A-Z]{12}[0-9]{2}$/.test(value) || /^(.)\1+$/.test(value))
     return false;
@@ -46,7 +47,34 @@ const phone = z
     (v) => !v || /^[+()\d\s.-]{8,25}$/.test(v),
     "Informe um telefone válido.",
   )
+  .refine(
+    (v) =>
+      !v ||
+      (v.replace(/\D/g, "").length >= 8 && v.replace(/\D/g, "").length <= 15),
+    "Informe um telefone válido.",
+  )
+  .transform((v) => (v ? v.replace(/[^\d+]/g, "") : null));
+export const postalCodeSchema = z
+  .string()
+  .trim()
+  .transform((v) => v.replace(/[\s-]/g, ""))
+  .refine((v) => !v || /^\d{8}$/.test(v), "Informe um CEP com 8 dígitos.")
   .transform((v) => v || null);
+const addressShape = {
+  address: optionalText(500).optional(),
+  postalCode: postalCodeSchema.optional(),
+  city: optionalText(120).optional(),
+  state: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .refine(
+      (v) => !v || BRAZIL_STATES.some((state) => state === v),
+      "Selecione um estado válido.",
+    )
+    .transform((v) => v || null)
+    .optional(),
+};
 export const loginSchema = z.object({
   email: z
     .string()
@@ -86,6 +114,7 @@ export const organizationSchema = z
       .transform((v) => [...new Set(v)]),
     email,
     phone,
+    ...addressShape,
     categories: z.array(z.string().trim().min(1).max(80)).max(20),
     notes: optionalText(5000),
     active: z.boolean(),
@@ -106,7 +135,20 @@ export const organizationSchema = z
       )
       .max(20),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    const seen = new Set<string>();
+    data.contacts.forEach((contact, index) => {
+      if (!contact.email) return;
+      if (seen.has(contact.email))
+        ctx.addIssue({
+          code: "custom",
+          path: ["contacts", index, "email"],
+          message: "Este e-mail já foi informado em outro contato.",
+        });
+      seen.add(contact.email);
+    });
+  });
 export const companySchema = z
   .object({
     legalName: z.string().trim().min(3).max(180),
@@ -114,7 +156,7 @@ export const companySchema = z
     cnpj: cnpjSchema,
     email,
     phone,
-    address: optionalText(500),
+    ...addressShape,
   })
   .strict();
 export type OrganizationInput = z.input<typeof organizationSchema>;

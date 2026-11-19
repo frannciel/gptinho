@@ -9,6 +9,7 @@ import {
   deleteOrganization,
 } from "@/server/organizations";
 import { saveCompany } from "@/server/settings";
+import { actionError } from "@/lib/errors";
 import { authenticate } from "@/server/login";
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/(_test|govnex-test)/.test(new URL(url).pathname))
@@ -201,6 +202,141 @@ describe.sequential("PostgreSQL real: fundação", () => {
       (await db.companySettings.findUniqueOrThrow({ where: { id: "company" } }))
         .address,
     ).toBe("Endereço de teste");
+  });
+  it("salva endereço do fornecedor e rejeita e-mail já usado por outro cadastro", async () => {
+    const supplier = await saveOrganization(db, actorId, {
+      ...base,
+      legalName: "Fornecedor Endereço",
+      cnpj: "",
+      roles: ["SUPPLIER"],
+      address: "Rua das Flores, 100",
+      postalCode: "01310-100",
+      city: "São Paulo",
+      state: "sp",
+    });
+    expect(supplier).toMatchObject({
+      address: "Rua das Flores, 100",
+      postalCode: "01310100",
+      city: "São Paulo",
+      state: "SP",
+    });
+    await expect(
+      saveOrganization(db, actorId, {
+        ...base,
+        legalName: "Duplicado",
+        cnpj: "",
+        contacts: [{ ...base.contacts[0], email: " CONTATO@EXAMPLE.ORG " }],
+      }),
+    ).rejects.toSatisfy((error: unknown) =>
+      actionError(error).message.includes("pessoa de contato"),
+    );
+    expect(await db.organization.count()).toBe(1);
+    const updated = await saveOrganization(
+      db,
+      actorId,
+      {
+        ...base,
+        legalName: "Fornecedor Editado",
+        cnpj: "",
+        roles: ["SUPPLIER"],
+        address: "Rua Atualizada, 200",
+        postalCode: "70000-000",
+        city: "Brasília",
+        state: "DF",
+      },
+      supplier.id,
+      supplier.version,
+    );
+    expect(updated.contacts[0].email).toBe("contato@example.org");
+    expect(updated).toMatchObject({
+      address: "Rua Atualizada, 200",
+      postalCode: "70000000",
+      city: "Brasília",
+      state: "DF",
+    });
+    await deleteOrganization(db, actorId, updated.id, updated.version);
+  });
+  it("duplicidade de e-mail na edição reverte endereço, versão e contatos", async () => {
+    const first = await saveOrganization(db, actorId, { ...base, cnpj: "" });
+    const secondInput = {
+      ...base,
+      cnpj: "",
+      legalName: "Outro Fornecedor",
+      address: "Endereço original",
+      contacts: [{ ...base.contacts[0], email: "outra@example.org" }],
+    };
+    const second = await saveOrganization(db, actorId, secondInput);
+    await expect(
+      saveOrganization(
+        db,
+        actorId,
+        { ...secondInput, address: "Não deve salvar", contacts: base.contacts },
+        second.id,
+        second.version,
+      ),
+    ).rejects.toMatchObject({ code: "P2002" });
+    const unchanged = await db.organization.findUniqueOrThrow({
+      where: { id: second.id },
+      include: { contacts: true },
+    });
+    expect(unchanged.address).toBe("Endereço original");
+    expect(unchanged.version).toBe(second.version);
+    expect(unchanged.contacts[0].email).toBe("outra@example.org");
+    await deleteOrganization(db, actorId, first.id, first.version);
+    await deleteOrganization(db, actorId, second.id, second.version);
+  });
+  it("unicidade resiste a cadastros concorrentes e permite contatos sem e-mail", async () => {
+    const results = await Promise.allSettled(
+      [1, 2].map((index) =>
+        saveOrganization(db, actorId, {
+          ...base,
+          legalName: `Concorrente ${index}`,
+          cnpj: "",
+          contacts: [
+            { ...base.contacts[0], email: "concorrente@example.org" },
+            { ...base.contacts[0], email: "" },
+            { ...base.contacts[0], email: "" },
+          ],
+        }),
+      ),
+    );
+    expect(
+      results.filter((result) => result.status === "fulfilled"),
+    ).toHaveLength(1);
+    expect(await db.organization.count()).toBe(1);
+    expect(await db.contact.count()).toBe(3);
+    const winner = await db.organization.findFirstOrThrow();
+    await deleteOrganization(db, actorId, winner.id, winner.version);
+  });
+  it("persiste CEP, cidade e UF da Govnex sem sobrescrever o endereço", async () => {
+    const before = await db.companySettings.findUniqueOrThrow({
+      where: { id: "company" },
+    });
+    await saveCompany(
+      db,
+      actorId,
+      {
+        legalName: "Govnex Teste",
+        tradeName: "Govnex",
+        cnpj: "",
+        email: "",
+        phone: "(11) 3333-4444",
+        address: "Endereço de teste",
+        postalCode: "01310-100",
+        city: "São Paulo",
+        state: "SP",
+      },
+      before.version,
+    );
+    expect(
+      await db.companySettings.findUniqueOrThrow({ where: { id: "company" } }),
+    ).toMatchObject({
+      phone: "1133334444",
+      address: "Endereço de teste",
+      postalCode: "01310100",
+      city: "São Paulo",
+      state: "SP",
+    });
   });
   it("auditoria não contém senha, hash ou token", async () => {
     const logs = JSON.stringify(await db.auditLog.findMany());

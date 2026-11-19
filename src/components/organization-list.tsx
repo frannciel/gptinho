@@ -10,6 +10,7 @@ import {
 import type { OrganizationRole } from "@prisma/client";
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
+import { maskPhone } from "@/lib/input-masks";
 import { formatCnpj, date } from "@/lib/format";
 import { listOrganizations, listSchema } from "@/server/organizations";
 import { PageHeader } from "./page-header";
@@ -192,7 +193,9 @@ export async function OrganizationList({
                         {org.email || "Não informado"}
                       </p>
                       <p className="mt-1 text-xs text-slate-400">
-                        {org.phone || `${org.contacts.length} contatos`}
+                        {org.phone
+                          ? maskPhone(org.phone)
+                          : `${org.contacts.length} contatos`}
                       </p>
                     </td>
                     <td className="px-4 py-5">

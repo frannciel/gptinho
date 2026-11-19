@@ -22,7 +22,8 @@
     "admin:reset-password": "tsx scripts/reset-password.ts",
     "postinstall": "prisma generate",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "contacts:check": "tsx scripts/check-contact-emails.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",

@@ -61,10 +61,40 @@ test("proteção, login, CRUD, configurações e logout", async ({
     .click();
   await page.getByRole("link", { name: "Novo órgão", exact: true }).click();
   await page.getByLabel("Nome / razão social").fill("Órgão E2E");
-  await page.getByLabel("CNPJ", { exact: true }).fill("11.222.333/0001-81");
+  const cnpj = page.getByLabel("CNPJ", { exact: true });
+  await cnpj.fill("11222333000181");
+  await expect(cnpj).toHaveValue("11.222.333/0001-81");
+  await cnpj.evaluate((input: HTMLInputElement) =>
+    input.setSelectionRange(3, 3),
+  );
+  await cnpj.press("Backspace");
+  await expect(cnpj).toHaveValue("12.223.330/0018-1");
+  await cnpj.fill("11222333000181");
+  await cnpj.evaluate((input: HTMLInputElement) => {
+    const nativeSetter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    )!.set!;
+    nativeSetter.call(input, input.value.slice(0, 2) + input.value.slice(3));
+    input.setSelectionRange(2, 2);
+    input.dispatchEvent(
+      new InputEvent("input", {
+        bubbles: true,
+        inputType: "deleteContentBackward",
+      }),
+    );
+  });
+  await expect(cnpj).toHaveValue("12.223.330/0018-1");
+  await cnpj.fill("11222333000181");
+  await page.getByLabel("Telefone", { exact: true }).fill("11988887777");
+  await expect(page.getByLabel("Telefone", { exact: true })).toHaveValue(
+    "(11) 98888-7777",
+  );
   await page.getByLabel("Código UASG").fill("123456");
   await page.getByRole("button", { name: "Adicionar contato" }).click();
   await page.locator("#contact-0-name").fill("Contato E2E");
+  await page.locator("#contact-0-phone").fill("1133334444");
+  await expect(page.locator("#contact-0-phone")).toHaveValue("(11) 3333-4444");
   const pendingAction = page.waitForRequest(
     (r) => r.method() === "POST" && !!r.headers()["next-action"],
   );
@@ -82,6 +112,11 @@ test("proteção, login, CRUD, configurações e logout", async ({
   await page
     .getByRole("link", { name: "Editar Órgão E2E", exact: true })
     .click();
+  await expect(page.getByLabel("CNPJ", { exact: true })).toHaveValue(
+    "11.222.333/0001-81",
+  );
+  await expect(page.locator("#phone")).toHaveValue("(11) 98888-7777");
+  await expect(page.locator("#contact-0-phone")).toHaveValue("(11) 3333-4444");
   await page.getByLabel("Nome / razão social").fill("Órgão E2E Atualizado");
   await page.getByRole("button", { name: "Salvar cadastro" }).click();
   await expect(
@@ -108,7 +143,17 @@ test("proteção, login, CRUD, configurações e logout", async ({
   await page
     .getByRole("link", { name: "Novo fornecedor", exact: true })
     .click();
+  await expect(page.getByLabel("Código UASG")).toHaveCount(0);
   await page.getByLabel("Nome / razão social").fill("Fornecedor E2E");
+  await page
+    .getByLabel("Endereço", { exact: true })
+    .fill("Rua Fornecedor, 100, Centro");
+  await page.getByLabel("CEP", { exact: true }).fill("01310100");
+  await expect(page.getByLabel("CEP", { exact: true })).toHaveValue(
+    "01310-100",
+  );
+  await page.getByLabel("Cidade", { exact: true }).fill("São Paulo");
+  await page.getByLabel("Estado (UF)").selectOption("SP");
   await page
     .getByLabel("Categorias de produtos e serviços")
     .fill("Licenças, Serviços");
@@ -116,6 +161,22 @@ test("proteção, login, CRUD, configurações e logout", async ({
   await expect(
     page.getByRole("link", { name: "Fornecedor E2E", exact: true }),
   ).toBeVisible();
+  await page
+    .getByRole("link", { name: "Editar Fornecedor E2E", exact: true })
+    .click();
+  await expect(page.getByLabel("Código UASG")).toHaveCount(0);
+  await expect(page.getByLabel("CEP", { exact: true })).toHaveValue(
+    "01310-100",
+  );
+  await expect(page.getByLabel("Cidade", { exact: true })).toHaveValue(
+    "São Paulo",
+  );
+  await expect(page.getByLabel("Estado (UF)")).toHaveValue("SP");
+  await page
+    .getByLabel("Endereço", { exact: true })
+    .fill("Rua Fornecedor Atualizada, 200");
+  await page.getByRole("button", { name: "Salvar cadastro" }).click();
+  await expect(page.getByRole("status")).toContainText("salvo");
   await page
     .getByRole("button", { name: "Excluir Fornecedor E2E", exact: true })
     .click();
@@ -127,10 +188,34 @@ test("proteção, login, CRUD, configurações e logout", async ({
   ).toHaveCount(0);
   await page.getByRole("link", { name: "Configurações", exact: true }).click();
   await page.getByLabel("Nome fantasia").fill("Govnex E2E");
+  await page.getByLabel("CNPJ", { exact: true }).fill("11222333000181");
+  await page.getByLabel("Telefone", { exact: true }).fill("1133334444");
+  await expect(page.getByLabel("CNPJ", { exact: true })).toHaveValue(
+    "11.222.333/0001-81",
+  );
+  await expect(page.getByLabel("Telefone", { exact: true })).toHaveValue(
+    "(11) 3333-4444",
+  );
+  await page
+    .getByLabel("Endereço", { exact: true })
+    .fill("Avenida Govnex, 1000, Sala 1");
+  await page.getByLabel("CEP", { exact: true }).fill("70000000");
+  await page.getByLabel("Cidade", { exact: true }).fill("Brasília");
+  await page.getByLabel("Estado (UF)").selectOption("DF");
   await page.getByRole("button", { name: "Salvar configurações" }).click();
   await expect(page.getByRole("status")).toContainText("salvas");
   await page.reload();
   await expect(page.getByLabel("Nome fantasia")).toHaveValue("Govnex E2E");
+  await expect(page.getByLabel("CEP", { exact: true })).toHaveValue(
+    "70000-000",
+  );
+  await expect(page.getByLabel("Cidade", { exact: true })).toHaveValue(
+    "Brasília",
+  );
+  await expect(page.getByLabel("Estado (UF)")).toHaveValue("DF");
+  await expect(page.getByLabel("Endereço", { exact: true })).toHaveValue(
+    "Avenida Govnex, 1000, Sala 1",
+  );
   const oldCookies = (await page.context().cookies())
     .map((c) => `${c.name}=${c.value}`)
     .join("; ");
@@ -247,5 +332,69 @@ test("login sem JavaScript nunca envia credenciais na URL", async ({
     expect(page.url().includes(secret)).toBe(false);
   } finally {
     await context.close();
+  }
+});
+
+test("e-mail de contato único com mensagem correta e edição sem falso duplicado", async ({
+  page,
+}) => {
+  const suffix = randomUUID();
+  const firstName = `Contato Único Primeiro ${suffix}`;
+  const secondName = `Contato Único Segundo ${suffix}`;
+  const contactEmail = `contato-${suffix}@example.org`;
+  try {
+    await page.goto("/login");
+    await page.getByLabel("E-mail corporativo").fill(email);
+    await page.getByLabel("Senha", { exact: true }).fill(secret);
+    await page.getByRole("button", { name: "Entrar no sistema" }).click();
+    await expect(page).toHaveURL(/\/dashboard$/);
+    await page.goto("/fornecedores/novo");
+    await page.getByLabel("Nome / razão social").fill(firstName);
+    await page.getByRole("button", { name: "Adicionar contato" }).click();
+    await page.locator("#contact-0-name").fill("Pessoa Única");
+    await page.locator("#contact-0-email").fill(contactEmail);
+    await page.getByRole("button", { name: "Salvar cadastro" }).click();
+    await expect(page.getByRole("status")).toContainText("salvo");
+    await page.goto("/fornecedores/novo");
+    await page.getByLabel("Nome / razão social").fill(secondName);
+    await page.getByRole("button", { name: "Adicionar contato" }).click();
+    await page.locator("#contact-0-name").fill("Pessoa Repetida");
+    await page.locator("#contact-0-email").fill(contactEmail.toUpperCase());
+    await page.getByRole("button", { name: "Salvar cadastro" }).click();
+    await expect(
+      page
+        .getByRole("alert")
+        .filter({ hasText: "Já existe uma pessoa de contato" }),
+    ).toContainText("pessoa de contato cadastrada com este e-mail");
+    await expect(page.getByLabel("Nome / razão social")).toHaveValue(
+      secondName,
+    );
+    await page.locator("#contact-0-email").fill(`outro-${contactEmail}`);
+    await page.getByRole("button", { name: "Adicionar contato" }).click();
+    await page
+      .locator("#contact-1-name")
+      .fill("Contato Repetido no Formulário");
+    await page
+      .locator("#contact-1-email")
+      .fill(`OUTRO-${contactEmail}`.toUpperCase());
+    await page.getByRole("button", { name: "Salvar cadastro" }).click();
+    await expect(page.locator("#contact-1-email")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    await expect(page.locator("#contact-1-email-error")).toContainText(
+      "outro contato",
+    );
+    const first = await db.organization.findFirstOrThrow({
+      where: { legalName: firstName },
+    });
+    await page.goto(`/fornecedores/${first.id}/editar`);
+    await expect(page.locator("#contact-0-email")).toHaveValue(contactEmail);
+    await page.getByRole("button", { name: "Salvar cadastro" }).click();
+    await expect(page.getByRole("status")).toContainText("salvo");
+  } finally {
+    await db.organization.deleteMany({
+      where: { legalName: { in: [firstName, secondName] } },
+    });
   }
 });

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Plus, Trash2, Save, LoaderCircle } from "lucide-react";
 import type { OrganizationInput, ActionResult } from "@/lib/validation";
 import { saveOrganizationAction } from "@/app/(admin)/actions";
+import { MaskedInput } from "./masked-input";
+import { AddressFields } from "./address-fields";
 import { Field, FormMessage } from "./form-fields";
 export type EditableOrganization = OrganizationInput & {
   id?: string;
@@ -80,16 +82,32 @@ export function OrganizationForm({
       required={options.required}
       error={result?.errors?.[key]}
     >
-      <input
-        id={key}
-        name={key}
-        className="field"
-        value={values[key]}
-        onChange={(e) => set(key, e.target.value)}
-        aria-invalid={!!result?.errors?.[key]}
-        aria-describedby={result?.errors?.[key] ? `${key}-error` : undefined}
-        {...options}
-      />
+      {key === "cnpj" || key === "phone" ? (
+        <MaskedInput
+          id={key}
+          name={key}
+          className="field"
+          mask={key}
+          value={values[key]}
+          onValueChange={(value) => set(key, value)}
+          placeholder={
+            key === "cnpj" ? "00.000.000/0000-00" : "(00) 00000-0000"
+          }
+          aria-invalid={!!result?.errors?.[key]}
+          aria-describedby={result?.errors?.[key] ? `${key}-error` : undefined}
+        />
+      ) : (
+        <input
+          id={key}
+          name={key}
+          className="field"
+          value={values[key]}
+          onChange={(e) => set(key, e.target.value)}
+          aria-invalid={!!result?.errors?.[key]}
+          aria-describedby={result?.errors?.[key] ? `${key}-error` : undefined}
+          {...options}
+        />
+      )}
     </Field>
   );
   return (
@@ -115,10 +133,11 @@ export function OrganizationForm({
             placeholder: "00.000.000/0000-00",
           })}
           {input("acronym", "Sigla", { maxLength: 30 })}
-          {input("uasg", "Código UASG", {
-            maxLength: 6,
-            placeholder: "6 dígitos, quando aplicável",
-          })}
+          {base === "/orgaos" &&
+            input("uasg", "Código UASG", {
+              maxLength: 6,
+              placeholder: "6 dígitos, quando aplicável",
+            })}
           <div>
             <p id="roles-label" className="label">
               Classificação <span className="text-brand-600">*</span>
@@ -219,6 +238,17 @@ export function OrganizationForm({
           </Field>
         </div>
       </fieldset>
+      {base === "/fornecedores" && (
+        <fieldset disabled={pending} className="panel p-5 md:p-7">
+          <legend className="sr-only">Endereço do fornecedor</legend>
+          <h2 className="mb-5 font-semibold">Endereço do fornecedor</h2>
+          <AddressFields
+            values={values}
+            errors={result?.errors}
+            onChange={(key, value) => set(key, value)}
+          />
+        </fieldset>
+      )}
       <fieldset disabled={pending} className="panel p-5 md:p-7">
         <legend className="sr-only">Contatos</legend>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -287,25 +317,49 @@ export function OrganizationForm({
                     name={`contact-${index}-${key}`}
                     label={label}
                     required={required}
+                    error={result?.errors?.[`contacts.${index}.${key}`]}
                   >
-                    <input
-                      id={`contact-${index}-${key}`}
-                      className="field"
-                      value={contact[key]}
-                      required={required}
-                      type={key === "email" ? "email" : "text"}
-                      maxLength={
-                        key === "email" ? 254 : key === "phone" ? 25 : 100
-                      }
-                      onChange={(e) =>
-                        set(
-                          "contacts",
-                          values.contacts.map((c, i) =>
-                            i === index ? { ...c, [key]: e.target.value } : c,
-                          ),
-                        )
-                      }
-                    />
+                    {key === "phone" ? (
+                      <MaskedInput
+                        id={`contact-${index}-${key}`}
+                        className="field"
+                        mask="phone"
+                        value={contact.phone}
+                        onValueChange={(value) =>
+                          set(
+                            "contacts",
+                            values.contacts.map((c, i) =>
+                              i === index ? { ...c, phone: value } : c,
+                            ),
+                          )
+                        }
+                      />
+                    ) : (
+                      <input
+                        id={`contact-${index}-${key}`}
+                        className="field"
+                        value={contact[key]}
+                        required={required}
+                        aria-invalid={
+                          !!result?.errors?.[`contacts.${index}.${key}`]
+                        }
+                        aria-describedby={
+                          result?.errors?.[`contacts.${index}.${key}`]
+                            ? `contact-${index}-${key}-error`
+                            : undefined
+                        }
+                        type={key === "email" ? "email" : "text"}
+                        maxLength={key === "email" ? 254 : 100}
+                        onChange={(e) =>
+                          set(
+                            "contacts",
+                            values.contacts.map((c, i) =>
+                              i === index ? { ...c, [key]: e.target.value } : c,
+                            ),
+                          )
+                        }
+                      />
+                    )}
                   </Field>
                 ))}
               </div>
