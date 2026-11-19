@@ -1,5 +1,7 @@
 # Implantação, Neon e Vercel
 
+Para o módulo de oportunidades, aplique a migration conforme [OPORTUNIDADES.md](OPORTUNIDADES.md) antes de incorporar a branch na main e atualizar a Vercel.
+
 Para a atualização de endereços e contatos, aplique primeiro a migration conforme [CADASTROS.md](CADASTROS.md), antes de incorporar a branch na main e atualizar a Vercel.
 
 ## 1. Preparar GitHub

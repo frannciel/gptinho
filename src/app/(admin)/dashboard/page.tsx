@@ -13,18 +13,24 @@ import {
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
 import { date, money } from "@/lib/format";
+import { getOpportunityStats } from "@/server/opportunities";
+import { OpportunityMetrics } from "@/components/opportunity-metrics";
+import { dateTime } from "@/lib/opportunity-values";
 import { PageHeader } from "@/components/page-header";
 export const metadata = { title: "Visão geral" };
 export default async function Dashboard() {
   const user = await requireAdminPage();
-  const [agencies, suppliers, recent] = await db.$transaction([
-    db.organization.count({
-      where: { roles: { has: "PUBLIC_AGENCY" }, active: true },
-    }),
-    db.organization.count({
-      where: { roles: { has: "SUPPLIER" }, active: true },
-    }),
-    db.organization.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
+  const [[agencies, suppliers, recent], opportunityStats] = await Promise.all([
+    db.$transaction([
+      db.organization.count({
+        where: { roles: { has: "PUBLIC_AGENCY" }, active: true },
+      }),
+      db.organization.count({
+        where: { roles: { has: "SUPPLIER" }, active: true },
+      }),
+      db.organization.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
+    ]),
+    getOpportunityStats(db),
   ]);
   return (
     <>
@@ -33,9 +39,9 @@ export default async function Dashboard() {
         title="Visão geral"
         description={`Olá, ${user.name.split(" ")[0]}. Acompanhe a base de relacionamentos e prepare os próximos passos da operação.`}
         action={
-          <Link href="/orgaos/novo" className="btn">
+          <Link href="/oportunidades/nova" className="btn">
             <Plus size={17} />
-            Cadastrar órgão
+            Nova oportunidade
           </Link>
         }
       />
@@ -78,6 +84,13 @@ export default async function Dashboard() {
             Icon: Truck,
             href: "/fornecedores",
           },
+          {
+            label: "Oportunidades abertas",
+            value: opportunityStats.open,
+            detail: "Carteira em acompanhamento · não arquivadas",
+            Icon: FileText,
+            href: "/oportunidades",
+          },
         ].map(({ label, value, detail, Icon, href }) => (
           <Link
             href={href}
@@ -95,22 +108,64 @@ export default async function Dashboard() {
             <p className="mt-3 text-xs text-slate-400">{detail}</p>
           </Link>
         ))}
-        {[
-          { label: "Oportunidades abertas", Icon: FileText },
-          { label: "Pedidos em andamento", Icon: ShoppingBag },
-        ].map(({ label, Icon }) => (
-          <div key={label} className="panel p-5">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
-              <Icon size={20} />
+        {[{ label: "Pedidos em andamento", Icon: ShoppingBag }].map(
+          ({ label, Icon }) => (
+            <div key={label} className="panel p-5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                <Icon size={20} />
+              </div>
+              <p className="mt-5 text-sm text-slate-500">{label}</p>
+              <p className="mt-1 text-3xl font-bold tracking-tight">0</p>
+              <p className="mt-3 text-xs text-slate-400">
+                Módulo previsto · sem lançamentos
+              </p>
             </div>
-            <p className="mt-5 text-sm text-slate-500">{label}</p>
-            <p className="mt-1 text-3xl font-bold tracking-tight">0</p>
-            <p className="mt-3 text-xs text-slate-400">
-              Módulo previsto · sem lançamentos
+          ),
+        )}
+      </div>
+      <section className="mt-7">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold">Carteira de oportunidades</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Indicadores calculados a partir das oportunidades em
+              acompanhamento.
             </p>
           </div>
-        ))}
-      </div>
+          <Link
+            href="/oportunidades"
+            className="text-sm font-semibold text-brand-600"
+          >
+            Ver oportunidades →
+          </Link>
+        </div>
+        <OpportunityMetrics stats={opportunityStats} />
+        {opportunityStats.upcoming.length > 0 && (
+          <div className="panel p-5">
+            <h3 className="mb-4 text-sm font-semibold">
+              Prazos nos próximos 7 dias
+            </h3>
+            <ul className="divide-y divide-slate-100">
+              {opportunityStats.upcoming.map((opportunity) => (
+                <li key={opportunity.id}>
+                  <Link
+                    href={`/oportunidades/${opportunity.id}`}
+                    className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm hover:text-brand-600"
+                  >
+                    <span>
+                      <strong>{opportunity.reference}</strong> ·{" "}
+                      {opportunity.organization.legalName}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      {dateTime(opportunity.proposalDeadline!)}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </section>
       <div className="mt-7 grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <section className="panel overflow-hidden">
           <div className="flex items-center justify-between border-b border-slate-100 p-5">
@@ -214,7 +269,8 @@ export default async function Dashboard() {
       <section className="mt-7">
         <h2 className="text-sm font-semibold">O caminho da sua operação</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Fluxo previsto para as próximas etapas do Govnex ERP.
+          Fluxo da operação. Oportunidades já disponíveis; demais módulos em
+          próximas entregas.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {[
