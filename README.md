@@ -139,3 +139,7 @@ Sem dependência de arquivos locais persistentes, sem uploads e sem uso do runti
 ## Fontes e precedência
 
 A solicitação atual substitui as recomendações anteriores de Vite/Fastify/Drizzle dos anexos. As regras de negócio pertinentes foram preservadas, inclusive cadastro unificado, auditoria e edição concorrente. Ver [decisões](docs/DECISOES.md). A conversa referenciada não estava acessível por ferramenta nesta sessão; os 11 arquivos anexados foram consultados. Os Documentos 01 e 04 citados no índice não foram anexados.
+
+## Atualização dos cadastros
+
+Máscaras de CNPJ/telefone, endereços separados da Govnex e fornecedores, UASG oculta na tela de fornecedores e e-mail de contato único no sistema. Consulte [comportamento, migration e revisão de duplicidades](docs/CADASTROS.md) antes de implantar esta atualização.

@@ -39,6 +39,10 @@ model Organization {
   roles      OrganizationRole[]
   email      String?
   phone      String?
+  address    String?
+  postalCode String?
+  city       String?
+  state      String?
   categories String[]           @default([])
   notes      String?
   active     Boolean            @default(true)
@@ -57,22 +61,25 @@ model Contact {
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   name           String
   position       String?
-  email          String?
+  email          String?      @unique
   phone          String?
 
   @@index([organizationId])
 }
 
 model CompanySettings {
-  id        String   @id @default("company")
-  legalName String   @default("Govnex Soluções Digitais Ltda.")
-  tradeName String   @default("Govnex")
-  cnpj      String?
-  email     String?
-  phone     String?
-  address   String?
-  version   Int      @default(1)
-  updatedAt DateTime @updatedAt
+  id         String   @id @default("company")
+  legalName  String   @default("Govnex Soluções Digitais Ltda.")
+  tradeName  String   @default("Govnex")
+  cnpj       String?
+  email      String?
+  phone      String?
+  address    String?
+  postalCode String?
+  city       String?
+  state      String?
+  version    Int      @default(1)
+  updatedAt  DateTime @updatedAt
 }
 
 model AuditLog {

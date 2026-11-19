@@ -24,6 +24,9 @@ export default async function SettingsPage() {
           email: settings?.email ?? "",
           phone: settings?.phone ?? "",
           address: settings?.address ?? "",
+          postalCode: settings?.postalCode ?? "",
+          city: settings?.city ?? "",
+          state: settings?.state ?? "",
         }}
       />
     </>
