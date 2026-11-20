@@ -3,7 +3,8 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Save, LoaderCircle } from "lucide-react";
-import { ContractingItems, type ItemRow } from "./contracting-items";
+import { money } from "@/lib/format";
+import { itemsTotal, normalizeItemDecimal } from "@/lib/contracting-items";
 import { HelpTooltip } from "./help-tooltip";
 import { Field, FormMessage } from "./form-fields";
 import type { OpportunityInput } from "@/lib/opportunity-validation";
@@ -33,12 +34,6 @@ export function OpportunityForm({
   version?: number;
 }) {
   const [values, setValues] = useState(initial);
-  const [items, setItems] = useState<ItemRow[]>(() =>
-    initial.items.map((item, index) => ({
-      ...item,
-      clientKey: item.id ?? `initial-${index}`,
-    })),
-  );
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -52,6 +47,12 @@ export function OpportunityForm({
     "aria-invalid": !!result?.errors?.[key],
     "aria-describedby": result?.errors?.[key] ? `${key}-error` : undefined,
   });
+  const estimatedTotal = itemsTotal(
+    values.items.map((i) => ({
+      quantity: normalizeItemDecimal(i.quantity, 3, 15, true)!,
+      unitPrice: normalizeItemDecimal(i.unitPrice, 4, 14),
+    })),
+  ).total;
   const selected = agencies.find(
     (agency) => agency.id === values.organizationId,
   );
@@ -66,10 +67,7 @@ export function OpportunityForm({
             const response = await saveOpportunityAction(
               {
                 ...values,
-                items: items.map(({ clientKey, ...item }) => {
-                  void clientKey;
-                  return item;
-                }),
+                items: values.items,
               },
               id,
               version,
@@ -203,11 +201,24 @@ export function OpportunityForm({
       </fieldset>
       <fieldset disabled={pending} className="panel p-6">
         <legend className="sr-only">Itens da contratação</legend>
-        <ContractingItems
-          rows={items}
-          onChange={setItems}
-          errors={result?.errors}
-        />
+        <h2 className="font-semibold">Itens da contratação</h2>
+        <p className="my-3 text-sm">
+          Salve a contratação para gerenciar seus itens em tela própria.
+        </p>
+        {values.items.map((item) => (
+          <p key={item.id ?? item.number} className="border-b py-2 text-sm">
+            {item.number} · {item.description} · {item.quantity} {item.unit}
+          </p>
+        ))}
+        <p className="my-3">
+          Valor estimado:{" "}
+          {estimatedTotal === null ? "A definir" : money(estimatedTotal)}
+        </p>
+        {id && (
+          <Link className="btn-secondary" href={`/contratacoes/${id}/itens`}>
+            Gerenciar itens
+          </Link>
+        )}
       </fieldset>
       <fieldset disabled={pending} className="panel p-6">
         <legend className="sr-only">Acompanhamento comercial</legend>

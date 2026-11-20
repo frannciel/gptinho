@@ -30,27 +30,29 @@ model User {
 }
 
 model Organization {
-  id            String             @id @default(cuid())
-  legalName     String
-  tradeName     String?
-  acronym       String?
-  cnpj          String?            @unique
-  uasg          String?
-  roles         OrganizationRole[]
-  email         String?
-  phone         String?
-  address       String?
-  postalCode    String?
-  city          String?
-  state         String?
-  categories    String[]           @default([])
-  notes         String?
-  active        Boolean            @default(true)
-  version       Int                @default(1)
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  contacts      Contact[]
-  opportunities Opportunity[]
+  id              String             @id @default(cuid())
+  legalName       String
+  tradeName       String?
+  acronym         String?
+  cnpj            String?            @unique
+  uasg            String?
+  roles           OrganizationRole[]
+  email           String?
+  phone           String?
+  address         String?
+  postalCode      String?
+  city            String?
+  state           String?
+  categories      String[]           @default([])
+  notes           String?
+  active          Boolean            @default(true)
+  version         Int                @default(1)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  contacts        Contact[]
+  opportunities   Opportunity[]
+  catalogProducts CatalogProduct[]   @relation("CatalogSupplier")
+  suppliedItems   OpportunityItem[]  @relation("ItemSupplier")
 
   @@index([legalName])
   @@index([roles], type: Gin)
@@ -165,15 +167,42 @@ model Opportunity {
 }
 
 model OpportunityItem {
-  id            String      @id @default(cuid())
-  opportunityId String
-  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  number        Int
-  description   String
-  unit          String      @default("UN")
-  quantity      Decimal     @db.Decimal(18, 3)
-  unitPrice     Decimal?    @db.Decimal(18, 4)
-  total         Decimal?    @db.Decimal(18, 2)
+  id                 String          @id @default(cuid())
+  opportunityId      String
+  opportunity        Opportunity     @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  catalogProductId   String?
+  catalogProduct     CatalogProduct? @relation(fields: [catalogProductId], references: [id], onDelete: Restrict)
+  brand              String?
+  model              String?
+  margin             Decimal?        @db.Decimal(5, 2)
+  administrativeCost Decimal?        @db.Decimal(5, 2)
+  supplierId         String?
+  supplier           Organization?   @relation("ItemSupplier", fields: [supplierId], references: [id], onDelete: Restrict)
+  number             Int
+  description        String
+  unit               String          @default("UN")
+  quantity           Decimal         @db.Decimal(18, 3)
+  unitPrice          Decimal?        @db.Decimal(18, 4)
+  total              Decimal?        @db.Decimal(18, 2)
 
   @@unique([opportunityId, number])
+}
+
+model CatalogProduct {
+  id                 String            @id @default(cuid())
+  description        String
+  brand              String?
+  model              String?
+  unit               String
+  margin             Decimal           @db.Decimal(5, 2)
+  administrativeCost Decimal           @db.Decimal(5, 2)
+  supplierId         String
+  supplier           Organization      @relation("CatalogSupplier", fields: [supplierId], references: [id], onDelete: Restrict)
+  active             Boolean           @default(true)
+  version            Int               @default(1)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  items              OpportunityItem[]
+
+  @@index([supplierId])
 }

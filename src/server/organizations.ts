@@ -71,6 +71,15 @@ export async function saveOrganization(
       throw new BusinessError(
         "Este órgão possui contratações vinculadas e não pode perder o papel de órgão público. Você pode desativá-lo preservando o histórico.",
       );
+    if (
+      id &&
+      !data.roles.includes("SUPPLIER") &&
+      ((await tx.catalogProduct.count({ where: { supplierId: id } })) ||
+        (await tx.opportunityItem.count({ where: { supplierId: id } })))
+    )
+      throw new BusinessError(
+        "Este fornecedor possui itens vinculados. Desative-o para preservar o histórico.",
+      );
     if (id) {
       const update = await tx.organization.updateMany({
         where: { id, version },

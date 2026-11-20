@@ -11,6 +11,8 @@ import {
   getOpportunityStats,
   getOpportunityDetail,
 } from "@/server/opportunities";
+import { saveCatalog } from "@/server/catalog";
+import { itemInput, headerInput } from "@/server/item-input";
 import { saveOrganization, deleteOrganization } from "@/server/organizations";
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/(_test|govnex-test)/.test(new URL(url).pathname))
@@ -58,6 +60,7 @@ async function cleanup() {
   await db.$transaction([
     db.opportunityItem.deleteMany(),
     db.opportunity.deleteMany(),
+    db.catalogProduct.deleteMany(),
     db.auditLog.deleteMany(),
     db.contact.deleteMany(),
     db.organization.deleteMany(),
@@ -92,6 +95,7 @@ beforeEach(async () => {
   await db.$transaction([
     db.opportunityItem.deleteMany(),
     db.opportunity.deleteMany(),
+    db.catalogProduct.deleteMany(),
   ]);
   await db.auditLog.deleteMany();
   await db.organization.update({
@@ -617,5 +621,100 @@ describe.sequential("Oportunidades em PostgreSQL real", () => {
       db.$executeRaw`INSERT INTO "Opportunity" ("id","reference","organizationId","subject","itemsEstimatedValue","updatedAt") VALUES ('raw-negative','RAW-NEGATIVE',${agencyId},'Teste de constraint',-1,NOW())`,
     ).rejects.toThrow();
     expect(await db.opportunity.count()).toBe(0);
+  });
+});
+
+describe.sequential("Catálogo e snapshots dos itens", () => {
+  const productInput = () => ({
+    description: "Licença de produtividade",
+    brand: "Marca original",
+    model: "Modelo original",
+    unit: "LIC",
+    margin: "15,50",
+    administrativeCost: "3,25",
+    supplierId,
+  });
+  it("copia o catálogo e preserva o snapshot após alterar o produto", async () => {
+    const product = await saveCatalog(db, actorId, productInput());
+    const op = await saveOpportunity(db, actorId, {
+      ...base(),
+      items: [
+        {
+          ...base().items[0],
+          description: product.description,
+          unit: product.unit,
+          catalogProductId: product.id,
+          brand: product.brand ?? "",
+          model: product.model ?? "",
+          margin: product.margin.toFixed(2),
+          administrativeCost: product.administrativeCost.toFixed(2),
+          supplierId,
+        },
+      ],
+    });
+    await saveCatalog(
+      db,
+      actorId,
+      { ...productInput(), brand: "Outra marca", margin: "25" },
+      product.id,
+      product.version,
+    );
+    const item = await db.opportunityItem.findFirstOrThrow({
+      where: { opportunityId: op.id },
+    });
+    expect(item.brand).toBe("Marca original");
+    expect(item.margin?.toFixed(2)).toBe("15.50");
+    expect(item.administrativeCost?.toFixed(2)).toBe("3.25");
+    expect(item.supplierId).toBe(supplierId);
+    const edited = await saveOpportunity(
+      db,
+      actorId,
+      { ...headerInput(op), items: [{ ...itemInput(item), quantity: "2" }] },
+      op.id,
+      op.version,
+    );
+    expect(edited.items[0].id).toBe(item.id);
+    expect(edited.estimatedValue?.toFixed(2)).toBe("2469.12");
+    const deleted = await saveOpportunity(
+      db,
+      actorId,
+      { ...headerInput(edited), items: [] },
+      op.id,
+      edited.version,
+    );
+    expect(deleted.estimatedValue).toBeNull();
+    expect(deleted.items).toHaveLength(0);
+  });
+  it("recusa órgão como fornecedor e edição concorrente no catálogo", async () => {
+    await expect(
+      saveCatalog(db, actorId, { ...productInput(), supplierId: agencyId }),
+    ).rejects.toThrow("fornecedor");
+    const p = await saveCatalog(db, actorId, productInput());
+    await saveCatalog(
+      db,
+      actorId,
+      { ...productInput(), margin: "20" },
+      p.id,
+      p.version,
+    );
+    await expect(
+      saveCatalog(db, actorId, productInput(), p.id, p.version),
+    ).rejects.toThrow("alterado");
+  });
+  it("preserva itens legados sem inventar percentuais", async () => {
+    const op = await saveOpportunity(db, actorId, base());
+    expect(op.items[0].margin).toBeNull();
+    expect(op.items[0].supplierId).toBeNull();
+    await expect(
+      db.catalogProduct.create({
+        data: {
+          ...productInput(),
+          brand: null,
+          model: null,
+          margin: "100.01",
+          administrativeCost: "0",
+        },
+      }),
+    ).rejects.toThrow();
   });
 });
