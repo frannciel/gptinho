@@ -54,6 +54,8 @@ export async function saveOrganization(
     z.number().int().positive().parse(version);
   }
   return db.$transaction(async (tx) => {
+    if (id)
+      await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${id} FOR UPDATE`;
     const before = id
       ? await tx.organization.findUnique({
           where: { id },
@@ -61,6 +63,14 @@ export async function saveOrganization(
         })
       : null;
     if (id && !before) throw new BusinessError("Registro não encontrado.");
+    if (
+      id &&
+      !data.roles.includes("PUBLIC_AGENCY") &&
+      (await tx.opportunity.count({ where: { organizationId: id } }))
+    )
+      throw new BusinessError(
+        "Este órgão possui oportunidades vinculadas e não pode perder o papel de órgão público. Você pode desativá-lo preservando o histórico.",
+      );
     if (id) {
       const update = await tx.organization.updateMany({
         where: { id, version },

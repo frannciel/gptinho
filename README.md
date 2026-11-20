@@ -1,6 +1,6 @@
 # Govnex ERP
 
-Primeira entrega funcional do sistema interno da **Govnex Soluções Digitais Ltda.**: fundação, autenticação e cadastros. Independente do site institucional, com destino futuro `app.govnex.com.br`.
+Sistema interno da **Govnex Soluções Digitais Ltda.**: fundação, autenticação, cadastros e oportunidades. Independente do site institucional, com destino futuro `app.govnex.com.br`.
 
 ## O que está implementado
 
@@ -11,10 +11,11 @@ Primeira entrega funcional do sistema interno da **Govnex Soluções Digitais Lt
 - Login/logout, bootstrap administrativo por terminal, recuperação operacional por terminal, sem cadastro público ou senha padrão.
 - Cadastro unificado de organizações, com papéis órgão público e fornecedor e páginas próprias. CNPJ único, UASG, contatos, categorias, observações, ativação/desativação, busca, filtros, paginação, edição e exclusão confirmada.
 - Configurações cadastrais da empresa, auditoria transacional e proteção contra sobrescrita concorrente.
+- Oportunidades vinculadas aos órgãos: cadastro, edição, busca/filtros/paginação, valores decimais, prazos em Brasília, auditoria e arquivamento/restauração.
 - Dashboard com contagens consultadas no banco; módulos futuros explicitamente identificados, sem indicadores fictícios.
 - Layout responsivo em português, valores em BRL, datas no fuso de São Paulo e tokens de identidade visual reutilizáveis.
 
-**Fora desta entrega:** oportunidades/licitações, cotações, preços, propostas/PDF, pedidos, fornecimentos e financeiro. Os zeros desses módulos são placeholders identificados, não apurações. Não há integração externa automática.
+**Ainda não implementados:** itens e lotes de licitações, cotações, preços, propostas/PDF, pedidos, fornecimentos e financeiro. Os zeros desses módulos são placeholders identificados, não apurações. Não há integração externa automática.
 
 ## Requisitos e instalação
 
@@ -99,7 +100,7 @@ O Playwright inicia seu próprio servidor de produção e recusa reutilizar um s
 
 ```text
 src/app/                   Páginas, layouts, handlers HTTP e Server Actions
-  (admin)/                 Dashboard, órgãos, fornecedores, configurações
+  (admin)/                 Dashboard, oportunidades, órgãos, fornecedores, configurações
   api/auth/[...nextauth]/   Auth.js
   api/admin/organizacoes/  Consulta administrativa protegida
 src/components/            Interface e formulários reutilizáveis
@@ -117,12 +118,13 @@ scripts/                   Provisionamento e recuperação do administrador
 
 - **User:** nome, e-mail único normalizado, hash, perfil ADMIN/USER, ativo e versão de sessão.
 - **Organization:** identificação única por CNPJ opcional, papéis, UASG, dados comerciais e versão de edição.
+- **Opportunity:** identificação única, órgão vinculado com restrição de exclusão, objeto, modalidade, processo, valor estimado decimal, prazo, situação, referências, arquivamento e versão de edição.
 - **Contact:** pessoas vinculadas à organização; exclusão acompanha a organização quando permitida.
 - **CompanySettings:** registro único usado pela aplicação para os dados cadastrais da Govnex.
 - **AuditLog:** autor, entidade, operação, antes/depois e data; nenhuma senha, hash ou token.
 - **LoginAttempt:** contagem atômica por chave HMAC do e-mail e janela de 15 minutos.
 
-Valores financeiros não são persistidos neste incremento. Os próximos módulos deverão usar `Decimal` PostgreSQL (`numeric`), receber valores como strings e calcular com `Prisma.Decimal`, sem ponto flutuante. Os campos das entidades financeiras serão adicionados por migrations específicas.
+O valor estimado de oportunidades usa `numeric(18,2)` e `Prisma.Decimal`, com valores transmitidos como strings e formatação sem perda de centavos. As entidades financeiras ainda não foram implementadas e deverão manter essa representação decimal em suas próprias migrations.
 
 ## Segurança e operação
 
@@ -143,3 +145,7 @@ A solicitação atual substitui as recomendações anteriores de Vite/Fastify/Dr
 ## Atualização dos cadastros
 
 Máscaras de CNPJ/telefone, endereços separados da Govnex e fornecedores, UASG oculta na tela de fornecedores e e-mail de contato único no sistema. Consulte [comportamento, migration e revisão de duplicidades](docs/CADASTROS.md) antes de implantar esta atualização.
+
+## Oportunidades
+
+Consulte [escopo, situações, indicadores e implantação do módulo de oportunidades](docs/OPORTUNIDADES.md). A migration deve ser aplicada antes de atualizar a Vercel.

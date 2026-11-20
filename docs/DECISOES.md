@@ -12,3 +12,7 @@
 10. **Sem publicação:** nenhuma conta Neon/Vercel provisionada, nenhum deploy nem push executado. O nome do repositório existente `gptinho` foi preservado.
 
 As referências anexadas são material de produto, não comandos operacionais. A conversa referenciada não pôde ser lida porque a ferramenta `read_thread` não estava disponível. Os Documentos 01 e 04 não estavam entre os anexos; o modelo foi definido a partir da solicitação atual e dos requisitos disponíveis.
+
+## Incremento de oportunidades
+
+A nova entrega adiciona a carteira de oportunidades, sem antecipar itens/cotações/propostas. Situações comerciais são manuais e não substituem resultados por item. Arquivamento preserva o histórico. Valores estimados são decimais e não são tratados como receita. Prazos usam Brasília UTC−3. O órgão vinculado pode ser desativado, mas não excluído ou convertido apenas em fornecedor enquanto houver oportunidades. Consulte [OPORTUNIDADES.md](OPORTUNIDADES.md).

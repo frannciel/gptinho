@@ -30,26 +30,27 @@ model User {
 }
 
 model Organization {
-  id         String             @id @default(cuid())
-  legalName  String
-  tradeName  String?
-  acronym    String?
-  cnpj       String?            @unique
-  uasg       String?
-  roles      OrganizationRole[]
-  email      String?
-  phone      String?
-  address    String?
-  postalCode String?
-  city       String?
-  state      String?
-  categories String[]           @default([])
-  notes      String?
-  active     Boolean            @default(true)
-  version    Int                @default(1)
-  createdAt  DateTime           @default(now())
-  updatedAt  DateTime           @updatedAt
-  contacts   Contact[]
+  id            String             @id @default(cuid())
+  legalName     String
+  tradeName     String?
+  acronym       String?
+  cnpj          String?            @unique
+  uasg          String?
+  roles         OrganizationRole[]
+  email         String?
+  phone         String?
+  address       String?
+  postalCode    String?
+  city          String?
+  state         String?
+  categories    String[]           @default([])
+  notes         String?
+  active        Boolean            @default(true)
+  version       Int                @default(1)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  contacts      Contact[]
+  opportunities Opportunity[]
 
   @@index([legalName])
   @@index([roles], type: Gin)
@@ -101,4 +102,48 @@ model LoginAttempt {
   windowStart DateTime @default(now())
 
   @@index([windowStart])
+}
+
+enum OpportunityStatus {
+  DRAFT
+  OPEN
+  IN_ANALYSIS
+  QUOTATION
+  PROPOSAL
+  CLOSED
+  CANCELLED
+}
+
+enum ProcurementMethod {
+  UNDEFINED
+  ELECTRONIC_AUCTION
+  IN_PERSON_AUCTION
+  ELECTRONIC_WAIVER
+  WAIVER
+  INEXIGIBILITY
+  COMPETITION
+  OTHER
+}
+
+model Opportunity {
+  id                String            @id @default(cuid())
+  reference         String            @unique
+  organizationId    String
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  subject           String
+  procurementMethod ProcurementMethod @default(UNDEFINED)
+  processNumber     String?
+  estimatedValue    Decimal?          @db.Decimal(18, 2)
+  proposalDeadline  DateTime?         @db.Timestamptz(3)
+  status            OpportunityStatus @default(OPEN)
+  sourceUrl         String?
+  notes             String?
+  archived          Boolean           @default(false)
+  version           Int               @default(1)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([organizationId, processNumber])
+  @@index([archived, status, proposalDeadline])
+  @@index([createdAt])
 }

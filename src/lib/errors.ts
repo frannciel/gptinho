@@ -19,6 +19,15 @@ export function actionError(error: unknown): ActionResult {
     return { ok: false, message: error.message };
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002") {
+      if (
+        error.meta?.modelName === "Opportunity" ||
+        JSON.stringify(error.meta?.target ?? "").includes("reference")
+      )
+        return {
+          ok: false,
+          message: "Esta identificação já está em uso por outra oportunidade.",
+          errors: { reference: ["Use uma identificação diferente."] },
+        };
       const contactEmail =
         error.meta?.modelName === "Contact" ||
         JSON.stringify(error.meta?.target ?? "").includes("email");
