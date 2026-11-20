@@ -52,6 +52,22 @@ export async function saveOpportunity(
           throw new BusinessError(
             "Um dos itens não pertence a esta contratação. Atualize a página.",
           );
+      for (const item of items) {
+        if (item.supplierId) {
+          await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${item.supplierId} FOR UPDATE`;
+          const supplier = await tx.organization.findUnique({
+            where: { id: item.supplierId },
+          });
+          const old = before?.items.find((i) => i.id === item.id);
+          if (
+            !supplier?.roles.includes("SUPPLIER") ||
+            (!supplier.active && old?.supplierId !== supplier.id)
+          )
+            throw new BusinessError(
+              "Selecione um fornecedor ativo para o item.",
+            );
+        }
+      }
       const payload = {
         ...data,
         estimatedValue:

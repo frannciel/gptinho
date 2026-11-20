@@ -40,6 +40,12 @@ export async function OpportunityEditor({ id }: { id?: string }) {
         processNumber: opportunity.processNumber ?? "",
         items: opportunity.items.map((item) => ({
           id: item.id,
+          catalogProductId: item.catalogProductId,
+          brand: item.brand ?? "",
+          model: item.model ?? "",
+          margin: item.margin?.toFixed(2) ?? null,
+          administrativeCost: item.administrativeCost?.toFixed(2) ?? null,
+          supplierId: item.supplierId,
           number: String(item.number),
           description: item.description,
           unit: item.unit,

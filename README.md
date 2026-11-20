@@ -150,3 +150,7 @@ Máscaras de CNPJ/telefone, endereços separados da Govnex e fornecedores, UASG 
 ## Contratações
 
 O módulo foi renomeado de Oportunidades para Contratações. Consulte [itens, total calculado, situações, links, dados legados e implantação](docs/CONTRATACOES.md). As páginas antigas redirecionam para as novas. A migration deve ser aplicada antes de atualizar a Vercel.
+
+### Catálogo e gerenciamento de itens
+
+O catálogo de itens comercializados e a tela específica de itens da contratação estão descritos em [Catálogo e itens](docs/CATALOGO.md), incluindo alterações solicitadas, ordem atualizada das próximas entregas e migração necessária.

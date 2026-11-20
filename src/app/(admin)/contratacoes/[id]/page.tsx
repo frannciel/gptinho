@@ -49,6 +49,14 @@ export default async function OpportunityDetail({
                 Editar contratação
               </Link>
             )}
+            {!opportunity.archived && (
+              <Link
+                className="btn-secondary"
+                href={`/contratacoes/${id}/itens`}
+              >
+                Gerenciar itens
+              </Link>
+            )}
             <OpportunityArchive
               id={id}
               reference={opportunity.reference}

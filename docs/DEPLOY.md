@@ -1,5 +1,7 @@
 # Implantação, Neon e Vercel
 
+Para o catálogo e o gerenciamento separado de itens, siga [CATALOGO.md](CATALOGO.md). Aplique a nova migration antes do deploy.
+
 Para a atualização de Contratações e itens, siga primeiro [CONTRATACOES.md](CONTRATACOES.md). A migration preserva as colunas legadas; evite edições na transição e aplique-a antes de atualizar a Vercel.
 
 Para o módulo de oportunidades, aplique a migration conforme [OPORTUNIDADES.md](OPORTUNIDADES.md) antes de incorporar a branch na main e atualizar a Vercel.

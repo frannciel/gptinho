@@ -80,6 +80,7 @@ test.afterAll(async () => {
         },
       });
     });
+    await db.catalogProduct.deleteMany({ where: { supplierId } });
     await db.organization.deleteMany({
       where: { id: { in: [agencyId, supplierId, inactiveId].filter(Boolean) } },
     });
@@ -95,6 +96,7 @@ test("contratações: cadastro, busca, prazo, edição, dashboard, arquivamento 
   page,
   request,
 }, testInfo) => {
+  test.setTimeout(60000);
   for (const path of ["/contratacoes", "/contratacoes/nova"]) {
     await page.goto(path);
     await expect(page).toHaveURL(/\/login$/);
@@ -131,24 +133,9 @@ test("contratações: cadastro, busca, prazo, edição, dashboard, arquivamento 
     .getByLabel("Modalidade de contratação")
     .selectOption("ELECTRONIC_AUCTION");
   await page.getByLabel("Número do processo").fill("12345/2026");
-  await expect(page.getByLabel("Valor estimado (R$)")).not.toBeEditable();
-  await page
-    .getByRole("button", { name: "Adicionar item", exact: true })
-    .click();
-  await page
-    .locator("#item-0-description")
-    .fill("Licenças de software de produtividade");
-  await page.locator("#item-0-quantity").fill("2");
-  await page.locator("#item-0-unitPrice").fill("100,1250");
-  await page
-    .getByRole("button", { name: "Adicionar item", exact: true })
-    .click();
-  await page.locator("#item-1-description").fill("Serviço de implantação");
-  await page.locator("#item-1-quantity").fill("1,5");
-  await page.locator("#item-1-unitPrice").fill("10");
-  await expect(page.getByLabel("Valor estimado (R$)")).toHaveValue(
-    "R$\u00a0215,25",
-  );
+  await expect(
+    page.getByRole("button", { name: "Adicionar item", exact: true }),
+  ).toHaveCount(0);
   await expect(page.getByLabel("Situação").locator("option")).toHaveText([
     "Cancelada",
     "Suspensa",
@@ -189,6 +176,120 @@ test("contratações: cadastro, busca, prazo, edição, dashboard, arquivamento 
     page.getByRole("heading", { name: reference, exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("status")).toContainText("salva");
+  await page
+    .getByRole("link", { name: "Gerenciar itens", exact: true })
+    .click();
+  await page.getByRole("link", { name: "Abrir catálogo", exact: true }).click();
+  await page
+    .getByLabel("Descrição", { exact: false })
+    .fill("Licenças catálogo E2E");
+  await page.getByLabel("Marca", { exact: true }).fill("Marca E2E");
+  await page.getByLabel("Modelo", { exact: true }).fill("Modelo E2E");
+  await page.getByLabel("Margem (%)", { exact: false }).fill("15,50");
+  await page
+    .getByLabel("Custo Administrativo (%)", { exact: false })
+    .fill("4,25");
+  await page
+    .getByLabel("Fornecedor", { exact: false })
+    .selectOption(supplierId);
+  await page
+    .getByRole("button", { name: "Salvar item do catálogo", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Item salvo" }),
+  ).toBeVisible();
+  const product = await db.catalogProduct.findFirstOrThrow({
+    where: { supplierId },
+  });
+  const created = await db.opportunity.findUniqueOrThrow({
+    where: { reference },
+  });
+  await page.goto(`/contratacoes/${created.id}/itens`);
+  await page
+    .getByLabel("Item do catálogo", { exact: false })
+    .selectOption(product.id);
+  await expect(page.getByLabel("Marca", { exact: true })).toHaveValue(
+    "Marca E2E",
+  );
+  await expect(page.getByLabel("Margem (%)", { exact: false })).toHaveValue(
+    "15.50",
+  );
+  await page.getByLabel("Quantidade", { exact: false }).fill("2");
+  await page
+    .getByLabel("Valor unitário estimado (R$)", { exact: true })
+    .fill("100,1250");
+  await page
+    .getByRole("button", { name: "Salvar item da contratação", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Item salvo" }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Item do catálogo", { exact: false })
+    .selectOption(product.id);
+  await page
+    .getByLabel("Descrição", { exact: false })
+    .fill("Serviço de implantação");
+  await page.getByLabel("Quantidade", { exact: false }).fill("1,5");
+  await page
+    .getByLabel("Valor unitário estimado (R$)", { exact: true })
+    .fill("10");
+  await page
+    .getByRole("button", { name: "Salvar item da contratação", exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: "Item salvo" }),
+  ).toBeVisible();
+  await expect(page.getByText(/Valor estimado:/)).toContainText("215,25");
+  const firstItem = await db.opportunityItem.findFirstOrThrow({
+    where: { opportunityId: created.id, number: 1 },
+  });
+  await page.goto(`/contratacoes/${created.id}/itens?edit=${firstItem.id}`);
+  await page.getByLabel("Margem (%)", { exact: false }).fill("100,01");
+  await page.getByLabel("Quantidade", { exact: false }).fill("3");
+  await page
+    .getByRole("button", { name: "Salvar item da contratação", exact: true })
+    .click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "0 a 100" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Quantidade", { exact: false })).toHaveValue(
+    "3",
+  );
+  await page.getByLabel("Margem (%)", { exact: false }).fill("15,50");
+  await page
+    .getByRole("button", { name: "Salvar item da contratação", exact: true })
+    .click();
+  await expect(page.getByText(/Valor estimado:/)).toContainText("315,38");
+  await page.goto(`/contratacoes/${created.id}/itens?edit=${firstItem.id}`);
+  await page.getByLabel("Quantidade", { exact: false }).fill("2");
+  await page
+    .getByRole("button", { name: "Salvar item da contratação", exact: true })
+    .click();
+  await expect(page.getByText(/Valor estimado:/)).toContainText("215,25");
+  const secondRow = page
+    .getByRole("row")
+    .filter({ hasText: "Serviço de implantação" });
+  page.once("dialog", (dialog) => dialog.accept());
+  await secondRow.getByRole("button", { name: "Excluir", exact: true }).click();
+  await expect(page.getByText(/Valor estimado:/)).toContainText("200,25");
+  await page
+    .getByLabel("Item do catálogo", { exact: false })
+    .selectOption(product.id);
+  await page
+    .getByLabel("Descrição", { exact: false })
+    .fill("Serviço de implantação");
+  await page.getByLabel("Quantidade", { exact: false }).fill("1,5");
+  await page
+    .getByLabel("Valor unitário estimado (R$)", { exact: true })
+    .fill("10");
+  await page
+    .getByRole("button", { name: "Salvar item da contratação", exact: true })
+    .click();
+  await expect(page.getByText(/Valor estimado:/)).toContainText("215,25");
+  await page
+    .getByRole("link", { name: "Voltar à contratação", exact: false })
+    .click();
   await expect(page.getByText("R$\u00a0215,25", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("link", { name: "Plataforma de licitação" }),
@@ -232,9 +333,7 @@ test("contratações: cadastro, busca, prazo, edição, dashboard, arquivamento 
   await expect(
     page.getByLabel("Prazo de apresentação", { exact: true }),
   ).toHaveValue(deadline);
-  await expect(page.getByLabel("Valor estimado (R$)")).toHaveValue(
-    "R$\u00a0215,25",
-  );
+  await expect(page.getByText(/Valor estimado:/)).toContainText("215,25");
   await expect(page.getByLabel("Link da plataforma de licitação")).toHaveValue(
     "https://example.org/plataforma",
   );

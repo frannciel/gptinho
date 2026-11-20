@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { percentage } from "./catalog-validation";
 import { idSchema } from "./validation";
 import {
   OPPORTUNITY_STATUS_VALUES,
@@ -49,6 +50,12 @@ export const opportunitySchema = z
         z
           .object({
             id: idSchema.optional(),
+            catalogProductId: idSchema.nullable().optional(),
+            brand: optionalText(120).optional(),
+            model: optionalText(120).optional(),
+            margin: percentage.nullable().optional(),
+            administrativeCost: percentage.nullable().optional(),
+            supplierId: idSchema.nullable().optional(),
             number: z
               .string()
               .regex(/^\d{1,6}$/, "Informe um número de item entre 1 e 999999.")

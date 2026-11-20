@@ -20,3 +20,7 @@ A nova entrega adiciona a carteira de oportunidades, sem antecipar itens/cotaç�
 ## Contratações e itens — 20/11/2026
 
 A solicitação atual renomeia a interface para Contratações e determina que o valor estimado seja somente o somatório dos itens. São implementados itens básicos, sem antecipar catálogo, lotes, cotações ou precificação de venda. Na escolha apresentada, o responsável respondeu **2**, autorizando converter as situações antigas para Proposta Cadastrada; Cancelada e Encerrada mantêm seus equivalentes. Valores, links e estados anteriores são preservados, sem criar itens fictícios nem classificar automaticamente o link antigo. O campo de prazo ganha ajuda, os links passam a plataforma/pasta de anexos e o arquivamento também fica disponível na edição. Detalhes e validação: [CONTRATACOES.md](CONTRATACOES.md).
+
+## Catálogo e ressalvas do tópico 4 — 20/11/2026
+
+O usuário aprovou Contratações com ressalvas e priorizou o catálogo de itens comercializados no módulo 6. O gerenciamento de itens passa a ter tela própria. Marca/Modelo opcionais e Unidade/Fornecedor/Margem/Custo Administrativo são copiados do catálogo, mantendo snapshot no item. Percentuais não modificam o valor estimado; fórmula de formação de preço ainda será tratada na etapa correspondente. Itens legados ficam pendentes de complementação em vez de receber dados presumidos.
