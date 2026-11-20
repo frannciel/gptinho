@@ -39,9 +39,9 @@ export default async function Dashboard() {
         title="Visão geral"
         description={`Olá, ${user.name.split(" ")[0]}. Acompanhe a base de relacionamentos e prepare os próximos passos da operação.`}
         action={
-          <Link href="/oportunidades/nova" className="btn">
+          <Link href="/contratacoes/nova" className="btn">
             <Plus size={17} />
-            Nova oportunidade
+            Nova contratação
           </Link>
         }
       />
@@ -85,11 +85,11 @@ export default async function Dashboard() {
             href: "/fornecedores",
           },
           {
-            label: "Oportunidades abertas",
+            label: "Contratações em acompanhamento",
             value: opportunityStats.open,
             detail: "Carteira em acompanhamento · não arquivadas",
             Icon: FileText,
-            href: "/oportunidades",
+            href: "/contratacoes",
           },
         ].map(({ label, value, detail, Icon, href }) => (
           <Link
@@ -126,17 +126,17 @@ export default async function Dashboard() {
       <section className="mt-7">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold">Carteira de oportunidades</h2>
+            <h2 className="font-semibold">Carteira de contratações</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Indicadores calculados a partir das oportunidades em
+              Indicadores calculados a partir das contratações em
               acompanhamento.
             </p>
           </div>
           <Link
-            href="/oportunidades"
+            href="/contratacoes"
             className="text-sm font-semibold text-brand-600"
           >
-            Ver oportunidades →
+            Ver contratações →
           </Link>
         </div>
         <OpportunityMetrics stats={opportunityStats} />
@@ -149,7 +149,7 @@ export default async function Dashboard() {
               {opportunityStats.upcoming.map((opportunity) => (
                 <li key={opportunity.id}>
                   <Link
-                    href={`/oportunidades/${opportunity.id}`}
+                    href={`/contratacoes/${opportunity.id}`}
                     className="flex flex-wrap items-center justify-between gap-3 py-3 text-sm hover:text-brand-600"
                   >
                     <span>
@@ -269,16 +269,16 @@ export default async function Dashboard() {
       <section className="mt-7">
         <h2 className="text-sm font-semibold">O caminho da sua operação</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Fluxo da operação. Oportunidades já disponíveis; demais módulos em
+          Fluxo da operação. Contratações já disponíveis; demais módulos em
           próximas entregas.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {[
-            "Oportunidade",
+            "Contratação",
             "Cotação",
             "Precificação",
             "Proposta",
-            "Contratação",
+            "Contrato / empenho",
             "Fornecimento",
             "Faturamento",
             "Recebimento",

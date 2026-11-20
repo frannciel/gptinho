@@ -13,9 +13,11 @@ export function OpportunityStatusBadge({
     ? "bg-slate-100 text-slate-500"
     : status === "CANCELLED"
       ? "bg-red-50 text-red-700"
-      : status === "CLOSED" || status === "DRAFT"
+      : status === "CLOSED" || status === "HOMOLOGATED"
         ? "bg-slate-100 text-slate-600"
-        : "bg-brand-50 text-brand-700";
+        : status === "SUSPENDED"
+          ? "bg-amber-50 text-amber-800"
+          : "bg-brand-50 text-brand-700";
   return (
     <span
       className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${color}`}

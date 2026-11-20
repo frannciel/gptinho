@@ -6,15 +6,20 @@ import { idSchema } from "@/lib/validation";
 import { deadlineInput } from "@/lib/opportunity-values";
 import type { OpportunityInput } from "@/lib/opportunity-validation";
 import { PageHeader } from "./page-header";
+import { OpportunityArchive } from "./opportunity-archive";
+import { money } from "@/lib/format";
 import { OpportunityForm } from "./opportunity-form";
 export async function OpportunityEditor({ id }: { id?: string }) {
   await requireAdminPage();
   if (id && !idSchema.safeParse(id).success) notFound();
   const opportunity = id
-    ? await db.opportunity.findUnique({ where: { id } })
+    ? await db.opportunity.findUnique({
+        where: { id },
+        include: { items: { orderBy: { number: "asc" } } },
+      })
     : null;
   if (id && !opportunity) notFound();
-  if (opportunity?.archived) redirect(`/oportunidades/${opportunity.id}`);
+  if (opportunity?.archived) redirect(`/contratacoes/${opportunity.id}`);
   const agencies = await db.organization.findMany({
     where: {
       roles: { has: "PUBLIC_AGENCY" },
@@ -33,11 +38,18 @@ export async function OpportunityEditor({ id }: { id?: string }) {
         subject: opportunity.subject,
         procurementMethod: opportunity.procurementMethod,
         processNumber: opportunity.processNumber ?? "",
-        estimatedValue:
-          opportunity.estimatedValue?.toFixed(2).replace(".", ",") ?? "",
+        items: opportunity.items.map((item) => ({
+          id: item.id,
+          number: String(item.number),
+          description: item.description,
+          unit: item.unit,
+          quantity: item.quantity.toFixed(3).replace(".", ","),
+          unitPrice: item.unitPrice?.toFixed(4).replace(".", ",") ?? "",
+        })),
         proposalDeadline: deadlineInput(opportunity.proposalDeadline),
         status: opportunity.status,
-        sourceUrl: opportunity.sourceUrl ?? "",
+        platformUrl: opportunity.platformUrl ?? "",
+        attachmentsUrl: opportunity.attachmentsUrl ?? "",
         notes: opportunity.notes ?? "",
       }
     : {
@@ -46,25 +58,61 @@ export async function OpportunityEditor({ id }: { id?: string }) {
         subject: "",
         procurementMethod: "UNDEFINED",
         processNumber: "",
-        estimatedValue: "",
+        items: [],
         proposalDeadline: "",
-        status: "OPEN",
-        sourceUrl: "",
+        status: "PROPOSAL_REGISTERED",
+        platformUrl: "",
+        attachmentsUrl: "",
         notes: "",
       };
   return (
     <div className="max-w-4xl">
       <Link
-        href={id ? `/oportunidades/${id}` : "/oportunidades"}
+        href={id ? `/contratacoes/${id}` : "/contratacoes"}
         className="mb-6 inline-flex text-sm text-slate-500 hover:text-brand-600"
       >
         ← Voltar
       </Link>
       <PageHeader
-        eyebrow="Comercial · Oportunidades"
-        title={id ? "Editar oportunidade" : "Nova oportunidade"}
+        eyebrow="Comercial · Contratações"
+        title={id ? "Editar contratação" : "Nova contratação"}
         description="Registre a demanda e acompanhe o próximo passo do relacionamento com o órgão."
+        action={
+          opportunity ? (
+            <OpportunityArchive
+              id={opportunity.id}
+              reference={opportunity.reference}
+              version={opportunity.version}
+              archived={opportunity.archived}
+              editing
+            />
+          ) : undefined
+        }
       />
+      {opportunity?.legacyEstimatedValue !== null &&
+        opportunity?.legacyEstimatedValue !== undefined && (
+          <p className="mb-5 rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
+            Valor anterior para conferência:{" "}
+            {money(opportunity.legacyEstimatedValue.toFixed(2))}. Ele foi
+            preservado, mas não entra no valor estimado atual. Cadastre os itens
+            para compor o total.
+          </p>
+        )}
+      {opportunity?.legacySourceUrl && (
+        <p className="mb-5 rounded-lg bg-amber-50 p-4 text-sm text-amber-900">
+          Há um{" "}
+          <a
+            className="underline"
+            href={opportunity.legacySourceUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            link anterior preservado
+          </a>
+          . Confira e preencha o campo da plataforma ou da pasta de anexos,
+          conforme o conteúdo.
+        </p>
+      )}
       {agencies.length ? (
         <OpportunityForm
           key={opportunity?.id ?? "new"}
@@ -79,7 +127,7 @@ export async function OpportunityEditor({ id }: { id?: string }) {
             Cadastre um órgão público para começar
           </h2>
           <p className="my-4 text-sm text-slate-500">
-            A oportunidade precisa estar vinculada a um órgão público ativo.
+            A contratação precisa estar vinculada a um órgão público ativo.
           </p>
           <Link href="/orgaos/novo" className="btn">
             Cadastrar órgão público

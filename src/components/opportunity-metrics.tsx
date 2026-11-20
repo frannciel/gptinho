@@ -16,17 +16,17 @@ export function OpportunityMetrics({
         {
           label: "Em acompanhamento",
           value: String(stats.open),
-          detail: "Abertas, em análise, cotação ou proposta",
+          detail: "Propostas cadastradas, suspensas ou homologadas",
         },
         {
           label: "Prazos vencidos",
           value: String(stats.overdue),
-          detail: "Na carteira em acompanhamento",
+          detail: "Propostas cadastradas com prazo vencido",
         },
         {
           label: "Próximos 7 dias",
           value: String(stats.dueSoon),
-          detail: "Prazos de apresentação em aberto",
+          detail: "Propostas cadastradas com prazo próximo",
         },
         {
           label: "Valor estimado em aberto",
@@ -34,7 +34,7 @@ export function OpportunityMetrics({
             stats.estimatedValue === null
               ? "Não informado"
               : money(stats.estimatedValue),
-          detail: `${stats.withValue} ${stats.withValue === 1 ? "oportunidade" : "oportunidades"} com valor informado`,
+          detail: `${stats.withValue} ${stats.withValue === 1 ? "contratação" : "contratações"} com valor informado`,
         },
       ].map((metric) => (
         <div className="panel p-5" key={metric.label}>

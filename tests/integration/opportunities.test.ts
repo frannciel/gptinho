@@ -39,14 +39,24 @@ const base = () => ({
   subject: "Licenças de software para o órgão",
   procurementMethod: "ELECTRONIC_AUCTION",
   processNumber: "PROC-2026/01",
-  estimatedValue: "1234,56",
+  items: [
+    {
+      number: "1",
+      description: "Licença de software",
+      unit: "UN",
+      quantity: "1",
+      unitPrice: "1234,56",
+    },
+  ],
   proposalDeadline: "2026-11-20T12:00",
-  status: "OPEN",
-  sourceUrl: "https://example.org/edital",
+  status: "PROPOSAL_REGISTERED",
+  platformUrl: "https://example.org/plataforma",
+  attachmentsUrl: "https://example.org/anexos",
   notes: "Observação de teste",
 });
 async function cleanup() {
   await db.$transaction([
+    db.opportunityItem.deleteMany(),
     db.opportunity.deleteMany(),
     db.auditLog.deleteMany(),
     db.contact.deleteMany(),
@@ -79,7 +89,10 @@ beforeAll(async () => {
   ).id;
 });
 beforeEach(async () => {
-  await db.opportunity.deleteMany();
+  await db.$transaction([
+    db.opportunityItem.deleteMany(),
+    db.opportunity.deleteMany(),
+  ]);
   await db.auditLog.deleteMany();
   await db.organization.update({
     where: { id: agencyId },
@@ -104,8 +117,16 @@ describe.sequential("Oportunidades em PostgreSQL real", () => {
       {
         ...base(),
         reference: "OP-EDITADA",
-        estimatedValue: "0,10",
-        status: "IN_ANALYSIS",
+        items: [
+          {
+            number: "1",
+            description: "Licença de software",
+            unit: "UN",
+            quantity: "1",
+            unitPrice: "0,10",
+          },
+        ],
+        status: "SUSPENDED",
       },
       op.id,
       op.version,
@@ -119,7 +140,7 @@ describe.sequential("Oportunidades em PostgreSQL real", () => {
   it("mantém nulo diferente de zero e salva valores grandes sem perder centavos", async () => {
     const unknown = await saveOpportunity(db, actorId, {
       ...base(),
-      estimatedValue: "",
+      items: [],
       proposalDeadline: "",
     });
     expect(unknown.estimatedValue).toBeNull();
@@ -127,9 +148,17 @@ describe.sequential("Oportunidades em PostgreSQL real", () => {
     const huge = await saveOpportunity(db, actorId, {
       ...base(),
       reference: "OP-BIG",
-      estimatedValue: "9.999.999.999.999.999,99",
+      items: [
+        {
+          number: "1",
+          description: "Licenças",
+          unit: "UN",
+          quantity: "100",
+          unitPrice: "99.999.999.999.999,99",
+        },
+      ],
     });
-    expect(huge.estimatedValue!.toFixed(2)).toBe("9999999999999999.99");
+    expect(huge.estimatedValue!.toFixed(2)).toBe("9999999999999999.00");
   });
   it("rejeita identificação duplicada com mensagem própria e rollback", async () => {
     await saveOpportunity(db, actorId, base());
@@ -241,7 +270,7 @@ describe.sequential("Oportunidades em PostgreSQL real", () => {
         reference: `PAGE-${String(index).padStart(2, "0")}`,
         organizationId: agencyId,
         subject: "Objeto para paginação e pesquisa",
-        status: index === 0 ? "CLOSED" : "OPEN",
+        status: index === 0 ? "CLOSED" : "PROPOSAL_REGISTERED",
         proposalDeadline: index === 1 ? new Date("2026-11-18T12:00:00Z") : null,
       })),
     });
@@ -269,35 +298,67 @@ describe.sequential("Oportunidades em PostgreSQL real", () => {
     await saveOpportunity(db, actorId, {
       ...base(),
       reference: "CENT-1",
-      estimatedValue: "0,10",
+      items: [
+        {
+          number: "1",
+          description: "Licença de software",
+          unit: "UN",
+          quantity: "1",
+          unitPrice: "0,10",
+        },
+      ],
       proposalDeadline: "2026-11-18T12:00",
     });
     await saveOpportunity(db, actorId, {
       ...base(),
       reference: "CENT-2",
-      estimatedValue: "0,20",
+      items: [
+        {
+          number: "1",
+          description: "Licenças",
+          unit: "UN",
+          quantity: "1",
+          unitPrice: "0,20",
+        },
+      ],
     });
     await saveOpportunity(db, actorId, {
       ...base(),
       reference: "UNKNOWN",
-      estimatedValue: "",
+      items: [],
       proposalDeadline: "",
     });
     await saveOpportunity(db, actorId, {
       ...base(),
       reference: "CLOSED",
       status: "CLOSED",
-      estimatedValue: "1000",
+      items: [
+        {
+          number: "1",
+          description: "Licenças",
+          unit: "UN",
+          quantity: "1",
+          unitPrice: "1000",
+        },
+      ],
     });
     await saveOpportunity(db, actorId, {
       ...base(),
       reference: "DRAFT",
-      status: "DRAFT",
+      status: "CANCELLED",
     });
     const archived = await saveOpportunity(db, actorId, {
       ...base(),
       reference: "ARCHIVED",
-      estimatedValue: "500",
+      items: [
+        {
+          number: "1",
+          description: "Licenças",
+          unit: "UN",
+          quantity: "1",
+          unitPrice: "500",
+        },
+      ],
     });
     await archiveOpportunity(db, actorId, archived.id, archived.version, true);
     expect(await getOpportunityStats(db, now)).toMatchObject({
@@ -326,7 +387,7 @@ describe.sequential("Oportunidades em PostgreSQL real", () => {
         agencyId,
         org.version,
       ),
-    ).rejects.toThrow("oportunidades vinculadas");
+    ).rejects.toThrow("contratações vinculadas");
     expect(
       (await db.organization.findUniqueOrThrow({ where: { id: agencyId } }))
         .roles,
@@ -355,9 +416,205 @@ describe.sequential("Oportunidades em PostgreSQL real", () => {
     for (const op of linked)
       expect(op.organization.roles).toContain("PUBLIC_AGENCY");
   });
+  it("recalcula ao editar/remover itens, preserva IDs e permite trocar numeração", async () => {
+    const first = await saveOpportunity(db, actorId, {
+      ...base(),
+      items: [
+        {
+          number: "1",
+          description: "Licenças",
+          unit: "UN",
+          quantity: "2",
+          unitPrice: "100,1250",
+        },
+        {
+          number: "2",
+          description: "Serviços",
+          unit: "HORA",
+          quantity: "1,5",
+          unitPrice: "10",
+        },
+      ],
+    });
+    expect(first.estimatedValue!.toFixed(2)).toBe("215.25");
+    const [a, b] = first.items;
+    const edited = await saveOpportunity(
+      db,
+      actorId,
+      {
+        ...base(),
+        items: [
+          {
+            id: a.id,
+            number: "2",
+            description: a.description,
+            unit: a.unit,
+            quantity: "3",
+            unitPrice: "100,1250",
+          },
+          {
+            id: b.id,
+            number: "1",
+            description: b.description,
+            unit: b.unit,
+            quantity: "1,5",
+            unitPrice: "10",
+          },
+        ],
+      },
+      first.id,
+      first.version,
+    );
+    expect(edited.estimatedValue!.toFixed(2)).toBe("315.38");
+    expect(edited.items.map((row) => row.id)).toEqual([b.id, a.id]);
+    const removed = await saveOpportunity(
+      db,
+      actorId,
+      {
+        ...base(),
+        items: [
+          {
+            id: b.id,
+            number: "1",
+            description: b.description,
+            unit: b.unit,
+            quantity: "1,5",
+            unitPrice: "10",
+          },
+        ],
+      },
+      first.id,
+      edited.version,
+    );
+    expect(removed.estimatedValue!.toFixed(2)).toBe("15.00");
+    expect(removed.items[0].id).toBe(b.id);
+    const empty = await saveOpportunity(
+      db,
+      actorId,
+      { ...base(), items: [] },
+      first.id,
+      removed.version,
+    );
+    expect(empty.estimatedValue).toBeNull();
+    expect(empty.items).toHaveLength(0);
+  });
+  it("não aceita total manual ou item pertencente a outra contratação", async () => {
+    const first = await saveOpportunity(db, actorId, base());
+    const other = await saveOpportunity(db, actorId, {
+      ...base(),
+      reference: "OUTRA",
+    });
+    await expect(
+      saveOpportunity(
+        db,
+        actorId,
+        { ...base(), estimatedValue: "0.01" },
+        first.id,
+        first.version,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      saveOpportunity(
+        db,
+        actorId,
+        { ...base(), items: [{ ...base().items[0], id: other.items[0].id }] },
+        first.id,
+        first.version,
+      ),
+    ).rejects.toThrow("não pertence");
+    const unchanged = await db.opportunity.findUniqueOrThrow({
+      where: { id: first.id },
+      include: { items: true },
+    });
+    expect(unchanged.version).toBe(first.version);
+    expect(unchanged.items[0].id).toBe(first.items[0].id);
+    expect(unchanged.estimatedValue!.toFixed(2)).toBe("1234.56");
+  });
+  it("um preço desconhecido deixa a estimativa incompleta e links são independentes", async () => {
+    const result = await saveOpportunity(db, actorId, {
+      ...base(),
+      items: [
+        ...base().items,
+        {
+          number: "2",
+          description: "Serviço sem preço conhecido",
+          unit: "UN",
+          quantity: "1",
+          unitPrice: "",
+        },
+      ],
+    });
+    expect(result.estimatedValue).toBeNull();
+    expect(result.items[0].total!.toFixed(2)).toBe("1234.56");
+    expect(result.items[1].total).toBeNull();
+    expect(result.platformUrl).toBe("https://example.org/plataforma");
+    expect(result.attachmentsUrl).toBe("https://example.org/anexos");
+  });
+  it("quantidades e totais também são protegidos pelo banco", async () => {
+    const parent = await saveOpportunity(db, actorId, { ...base(), items: [] });
+    await expect(
+      db.opportunityItem.create({
+        data: {
+          opportunityId: parent.id,
+          number: 1,
+          description: "Item inválido",
+          unit: "UN",
+          quantity: 0,
+          unitPrice: 10,
+          total: 0,
+        },
+      }),
+    ).rejects.toThrow();
+    await expect(
+      db.opportunityItem.create({
+        data: {
+          opportunityId: parent.id,
+          number: 1,
+          description: "Total adulterado",
+          unit: "UN",
+          quantity: 2,
+          unitPrice: 10,
+          total: 1,
+        },
+      }),
+    ).rejects.toThrow();
+    expect(await db.opportunityItem.count()).toBe(0);
+  });
+  it("prazos suspensos e homologados não entram como vencidos ou próximos", async () => {
+    const now = new Date("2026-11-19T12:00:00Z");
+    await saveOpportunity(db, actorId, {
+      ...base(),
+      status: "SUSPENDED",
+      proposalDeadline: "2020-01-01T12:00",
+    });
+    await saveOpportunity(db, actorId, {
+      ...base(),
+      reference: "HOMOLOGADA",
+      status: "HOMOLOGATED",
+    });
+    expect(await getOpportunityStats(db, now)).toMatchObject({
+      open: 2,
+      overdue: 0,
+      dueSoon: 0,
+    });
+  });
+  it("banco impede adulterar o total do cabeçalho mesmo fora da aplicação", async () => {
+    const result = await saveOpportunity(db, actorId, base());
+    await expect(
+      db.opportunity.update({
+        where: { id: result.id },
+        data: { estimatedValue: "0.01" },
+      }),
+    ).rejects.toThrow();
+    expect(
+      (
+        await db.opportunity.findUniqueOrThrow({ where: { id: result.id } })
+      ).estimatedValue!.toFixed(2),
+    ).toBe("1234.56");
+  });
   it("banco também recusa valor negativo em escrita direta", async () => {
     await expect(
-      db.$executeRaw`INSERT INTO "Opportunity" ("id","reference","organizationId","subject","estimatedValue","updatedAt") VALUES ('raw-negative','RAW-NEGATIVE',${agencyId},'Teste de constraint',-1,NOW())`,
+      db.$executeRaw`INSERT INTO "Opportunity" ("id","reference","organizationId","subject","itemsEstimatedValue","updatedAt") VALUES ('raw-negative','RAW-NEGATIVE',${agencyId},'Teste de constraint',-1,NOW())`,
     ).rejects.toThrow();
     expect(await db.opportunity.count()).toBe(0);
   });

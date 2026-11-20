@@ -17,8 +17,8 @@ function refresh() {
     "/orgaos",
     "/fornecedores",
     "/configuracoes",
-    "/oportunidades",
-    "/oportunidades/nova",
+    "/contratacoes",
+    "/contratacoes/nova",
   ])
     revalidatePath(path);
 }

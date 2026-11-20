@@ -104,7 +104,7 @@ model LoginAttempt {
   @@index([windowStart])
 }
 
-enum OpportunityStatus {
+enum LegacyOpportunityStatus {
   DRAFT
   OPEN
   IN_ANALYSIS
@@ -112,6 +112,8 @@ enum OpportunityStatus {
   PROPOSAL
   CLOSED
   CANCELLED
+
+  @@map("OpportunityStatus")
 }
 
 enum ProcurementMethod {
@@ -125,25 +127,53 @@ enum ProcurementMethod {
   OTHER
 }
 
+enum ContractingStatus {
+  CANCELLED
+  SUSPENDED
+  HOMOLOGATED
+  PROPOSAL_REGISTERED
+  CLOSED
+}
+
 model Opportunity {
-  id                String            @id @default(cuid())
-  reference         String            @unique
-  organizationId    String
-  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  subject           String
-  procurementMethod ProcurementMethod @default(UNDEFINED)
-  processNumber     String?
-  estimatedValue    Decimal?          @db.Decimal(18, 2)
-  proposalDeadline  DateTime?         @db.Timestamptz(3)
-  status            OpportunityStatus @default(OPEN)
-  sourceUrl         String?
-  notes             String?
-  archived          Boolean           @default(false)
-  version           Int               @default(1)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  id                   String                  @id @default(cuid())
+  reference            String                  @unique
+  organizationId       String
+  organization         Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  subject              String
+  procurementMethod    ProcurementMethod       @default(UNDEFINED)
+  processNumber        String?
+  estimatedValue       Decimal?                @map("itemsEstimatedValue") @db.Decimal(18, 2)
+  legacyEstimatedValue Decimal?                @map("estimatedValue") @db.Decimal(18, 2)
+  proposalDeadline     DateTime?               @db.Timestamptz(3)
+  status               ContractingStatus       @default(PROPOSAL_REGISTERED) @map("contractingStatus")
+  legacyStatus         LegacyOpportunityStatus @default(OPEN) @map("status")
+  platformUrl          String?
+  attachmentsUrl       String?
+  legacySourceUrl      String?                 @map("sourceUrl")
+  notes                String?
+  archived             Boolean                 @default(false)
+  version              Int                     @default(1)
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+  items                OpportunityItem[]
 
   @@index([organizationId, processNumber])
-  @@index([archived, status, proposalDeadline])
+  @@index([archived, legacyStatus, proposalDeadline], map: "Opportunity_archived_status_proposalDeadline_idx")
+  @@index([archived, status, proposalDeadline], map: "Opportunity_archived_contractingStatus_proposalDeadline_idx")
   @@index([createdAt])
+}
+
+model OpportunityItem {
+  id            String      @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  number        Int
+  description   String
+  unit          String      @default("UN")
+  quantity      Decimal     @db.Decimal(18, 3)
+  unitPrice     Decimal?    @db.Decimal(18, 4)
+  total         Decimal?    @db.Decimal(18, 2)
+
+  @@unique([opportunityId, number])
 }

@@ -6,23 +6,28 @@ export function Field({
   error,
   required,
   children,
+  help,
 }: {
   label: string;
   name: string;
   error?: string[];
   required?: boolean;
   children: React.ReactNode;
+  help?: React.ReactNode;
 }) {
   return (
     <div>
-      <label htmlFor={name} className="label">
-        {label}
-        {required && (
-          <span aria-hidden="true" className="ml-1 text-brand-600">
-            *
-          </span>
-        )}
-      </label>
+      <div className="mb-1.5 flex items-center gap-2">
+        <label htmlFor={name} className="label mb-0">
+          {label}
+          {required && (
+            <span aria-hidden="true" className="ml-1 text-brand-600">
+              *
+            </span>
+          )}
+        </label>
+        {help}
+      </div>
       {children}
       {error?.length ? (
         <p id={`${name}-error`} className="mt-1.5 text-xs text-red-700">
@@ -41,7 +46,9 @@ export function FormMessage({ result }: { result: ActionResult | null }) {
       {result.message}
       {result.errors &&
         Object.entries(result.errors)
-          .filter(([key]) => ["contacts", "roles", "categories"].includes(key))
+          .filter(([key]) =>
+            ["contacts", "roles", "categories", "items"].includes(key),
+          )
           .map(([key, errors]) => (
             <p key={key} className="mt-1">
               {errors.join(" ")}

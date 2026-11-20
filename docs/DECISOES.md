@@ -16,3 +16,7 @@ As referências anexadas são material de produto, não comandos operacionais. A
 ## Incremento de oportunidades
 
 A nova entrega adiciona a carteira de oportunidades, sem antecipar itens/cotações/propostas. Situações comerciais são manuais e não substituem resultados por item. Arquivamento preserva o histórico. Valores estimados são decimais e não são tratados como receita. Prazos usam Brasília UTC−3. O órgão vinculado pode ser desativado, mas não excluído ou convertido apenas em fornecedor enquanto houver oportunidades. Consulte [OPORTUNIDADES.md](OPORTUNIDADES.md).
+
+## Contratações e itens — 20/11/2026
+
+A solicitação atual renomeia a interface para Contratações e determina que o valor estimado seja somente o somatório dos itens. São implementados itens básicos, sem antecipar catálogo, lotes, cotações ou precificação de venda. Na escolha apresentada, o responsável respondeu **2**, autorizando converter as situações antigas para Proposta Cadastrada; Cancelada e Encerrada mantêm seus equivalentes. Valores, links e estados anteriores são preservados, sem criar itens fictícios nem classificar automaticamente o link antigo. O campo de prazo ganha ajuda, os links passam a plataforma/pasta de anexos e o arquivamento também fica disponível na edição. Detalhes e validação: [CONTRATACOES.md](CONTRATACOES.md).

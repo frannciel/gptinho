@@ -16,10 +16,19 @@ const base = {
   subject: "Licenças de software para o órgão",
   procurementMethod: "ELECTRONIC_AUCTION",
   processNumber: "  proc  001/2026 ",
-  estimatedValue: "1.234,56",
+  items: [
+    {
+      number: "1",
+      description: "Licença de software",
+      unit: "UN",
+      quantity: "1",
+      unitPrice: "1.234,56",
+    },
+  ],
   proposalDeadline: "2026-11-19T17:30",
-  status: "OPEN",
-  sourceUrl: "",
+  status: "PROPOSAL_REGISTERED",
+  platformUrl: "",
+  attachmentsUrl: "",
   notes: "",
 };
 describe("Valores estimados com precisão decimal", () => {
@@ -76,15 +85,16 @@ describe("Contrato de oportunidades", () => {
   it("normaliza identificação/processo e preserva desconhecidos como nulos", () => {
     const result = opportunitySchema.parse({
       ...base,
-      estimatedValue: "",
+      items: [],
       proposalDeadline: "",
     });
     expect(result).toMatchObject({
       reference: "OP-2026-001",
       processNumber: "PROC 001/2026",
-      estimatedValue: null,
+      items: [],
       proposalDeadline: null,
-      sourceUrl: null,
+      platformUrl: null,
+      attachmentsUrl: null,
       notes: null,
     });
   });
@@ -105,15 +115,15 @@ describe("Contrato de oportunidades", () => {
     "http://example.org/edital",
     "https://user:password@example.org",
   ])("recusa fonte insegura %s", (sourceUrl) =>
-    expect(opportunitySchema.safeParse({ ...base, sourceUrl }).success).toBe(
-      false,
-    ),
+    expect(
+      opportunitySchema.safeParse({ ...base, platformUrl: sourceUrl }).success,
+    ).toBe(false),
   );
   it("aceita fonte HTTPS sem credenciais", () =>
     expect(
       opportunitySchema.safeParse({
         ...base,
-        sourceUrl: "https://example.org/edital",
+        platformUrl: "https://example.org/edital",
       }).success,
     ).toBe(true));
   it("valida enumerações e filtros", () => {

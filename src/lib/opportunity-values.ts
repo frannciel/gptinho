@@ -1,30 +1,26 @@
 export const OPPORTUNITY_STATUS_VALUES = [
-  "DRAFT",
-  "OPEN",
-  "IN_ANALYSIS",
-  "QUOTATION",
-  "PROPOSAL",
-  "CLOSED",
   "CANCELLED",
+  "SUSPENDED",
+  "HOMOLOGATED",
+  "PROPOSAL_REGISTERED",
+  "CLOSED",
 ] as const;
 export const OPPORTUNITY_STATUSES: Record<
   (typeof OPPORTUNITY_STATUS_VALUES)[number],
   string
 > = {
-  DRAFT: "Rascunho",
-  OPEN: "Aberta",
-  IN_ANALYSIS: "Em análise",
-  QUOTATION: "Em cotação",
-  PROPOSAL: "Em elaboração de proposta",
-  CLOSED: "Encerrada",
   CANCELLED: "Cancelada",
+  SUSPENDED: "Suspensa",
+  HOMOLOGATED: "Homologada",
+  PROPOSAL_REGISTERED: "Proposta Cadastrada",
+  CLOSED: "Encerrada",
 };
 export const OPEN_OPPORTUNITY_STATUSES = [
-  "OPEN",
-  "IN_ANALYSIS",
-  "QUOTATION",
-  "PROPOSAL",
+  "PROPOSAL_REGISTERED",
+  "SUSPENDED",
+  "HOMOLOGATED",
 ] as const;
+export const DEADLINE_OPPORTUNITY_STATUSES = ["PROPOSAL_REGISTERED"] as const;
 export const PROCUREMENT_METHOD_VALUES = [
   "UNDEFINED",
   "ELECTRONIC_AUCTION",
@@ -98,4 +94,8 @@ export const dateTime = (value: Date | string) =>
   }).format(new Date(value));
 export function isOpenOpportunity(status: string) {
   return OPEN_OPPORTUNITY_STATUSES.some((value) => value === status);
+}
+
+export function hasActiveDeadline(status: string) {
+  return DEADLINE_OPPORTUNITY_STATUSES.some((value) => value === status);
 }

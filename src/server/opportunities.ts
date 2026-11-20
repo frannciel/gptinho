@@ -6,7 +6,12 @@ import {
   opportunitySchema,
   opportunityFilters,
 } from "@/lib/opportunity-validation";
-import { OPEN_OPPORTUNITY_STATUSES } from "@/lib/opportunity-values";
+import {
+  OPEN_OPPORTUNITY_STATUSES,
+  DEADLINE_OPPORTUNITY_STATUSES,
+} from "@/lib/opportunity-values";
+import { itemsTotal } from "@/lib/contracting-items";
+const includeItems = { items: { orderBy: { number: "asc" as const } } };
 export async function saveOpportunity(
   db: PrismaClient,
   actorId: string,
@@ -14,60 +19,98 @@ export async function saveOpportunity(
   id?: string,
   version?: number,
 ) {
-  const data = opportunitySchema.parse(input);
+  const { items, ...data } = opportunitySchema.parse(input);
+  const calculated = itemsTotal(items);
   if (id) {
     idSchema.parse(id);
     z.number().int().positive().parse(version);
   }
-  return db.$transaction(async (tx) => {
-    // Share the organization lock with organization edits to protect its public-agency role.
-    await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${data.organizationId} FOR UPDATE`;
-    const before = id
-      ? await tx.opportunity.findUnique({ where: { id } })
-      : null;
-    if (id && !before) throw new BusinessError("Oportunidade não encontrada.");
-    if (before?.archived)
-      throw new BusinessError("Restaure a oportunidade antes de editar.");
-    const agency = await tx.organization.findUnique({
-      where: { id: data.organizationId },
-    });
-    if (!agency?.roles.includes("PUBLIC_AGENCY"))
-      throw new BusinessError("Selecione um órgão público válido.");
-    if (!agency.active && before?.organizationId !== agency.id)
-      throw new BusinessError(
-        "Selecione um órgão público ativo para criar ou transferir a oportunidade.",
-      );
-    const payload = {
-      ...data,
-      estimatedValue:
-        data.estimatedValue === null
-          ? null
-          : new Prisma.Decimal(data.estimatedValue),
-    };
-    if (id) {
-      const updated = await tx.opportunity.updateMany({
-        where: { id, version, archived: false },
-        data: { ...payload, version: { increment: 1 } },
+  return db.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${data.organizationId} FOR UPDATE`;
+      const before = id
+        ? await tx.opportunity.findUnique({
+            where: { id },
+            include: includeItems,
+          })
+        : null;
+      if (id && !before) throw new BusinessError("Contratação não encontrada.");
+      if (before?.archived)
+        throw new BusinessError("Restaure a contratação antes de editar.");
+      const agency = await tx.organization.findUnique({
+        where: { id: data.organizationId },
       });
-      if (!updated.count)
+      if (!agency?.roles.includes("PUBLIC_AGENCY"))
+        throw new BusinessError("Selecione um órgão público válido.");
+      if (!agency.active && before?.organizationId !== agency.id)
         throw new BusinessError(
-          "A oportunidade foi alterada por outro usuário. Atualize a página antes de salvar.",
+          "Selecione um órgão público ativo para criar ou transferir a contratação.",
         );
-    }
-    const after = id
-      ? await tx.opportunity.findUniqueOrThrow({ where: { id } })
-      : await tx.opportunity.create({ data: payload });
-    await tx.auditLog.create({
-      data: {
-        actorId,
-        entity: "Opportunity",
-        entityId: after.id,
-        action: id ? "UPDATE" : "CREATE",
-        changes: JSON.parse(JSON.stringify({ before, after })),
-      },
-    });
-    return after;
-  });
+      const owned = new Set(before?.items.map((item) => item.id) ?? []);
+      for (const item of items)
+        if (item.id && !owned.has(item.id))
+          throw new BusinessError(
+            "Um dos itens não pertence a esta contratação. Atualize a página.",
+          );
+      const payload = {
+        ...data,
+        estimatedValue:
+          calculated.total === null
+            ? null
+            : new Prisma.Decimal(calculated.total),
+      };
+      let parentId = id;
+      if (id) {
+        const result = await tx.opportunity.updateMany({
+          where: { id, version, archived: false },
+          data: { ...payload, version: { increment: 1 } },
+        });
+        if (!result.count)
+          throw new BusinessError(
+            "A contratação foi alterada por outro usuário. Atualize a página antes de salvar.",
+          );
+      } else parentId = (await tx.opportunity.create({ data: payload })).id;
+      const kept = items.flatMap((item) => (item.id ? [item.id] : []));
+      if (before)
+        await tx.opportunityItem.deleteMany({
+          where: { opportunityId: parentId, id: { notIn: kept } },
+        });
+      const newItems: Prisma.OpportunityItemCreateManyInput[] = [];
+      for (const [index, item] of items.entries()) {
+        const { id: itemId, ...fields } = item;
+        const row = {
+          ...fields,
+          quantity: new Prisma.Decimal(item.quantity),
+          unitPrice:
+            item.unitPrice === null ? null : new Prisma.Decimal(item.unitPrice),
+          total:
+            calculated.lines[index] === null
+              ? null
+              : new Prisma.Decimal(calculated.lines[index]!),
+        };
+        if (itemId)
+          await tx.opportunityItem.update({ where: { id: itemId }, data: row });
+        else newItems.push({ ...row, opportunityId: parentId! });
+      }
+      if (newItems.length)
+        await tx.opportunityItem.createMany({ data: newItems });
+      const after = await tx.opportunity.findUniqueOrThrow({
+        where: { id: parentId },
+        include: includeItems,
+      });
+      await tx.auditLog.create({
+        data: {
+          actorId,
+          entity: "Opportunity",
+          entityId: after.id,
+          action: id ? "UPDATE" : "CREATE",
+          changes: JSON.parse(JSON.stringify({ before, after })),
+        },
+      });
+      return after;
+    },
+    { maxWait: 10000, timeout: 20000 },
+  );
 }
 export async function archiveOpportunity(
   db: PrismaClient,
@@ -80,17 +123,23 @@ export async function archiveOpportunity(
   z.number().int().positive().parse(version);
   z.boolean().parse(archived);
   return db.$transaction(async (tx) => {
-    const before = await tx.opportunity.findUnique({ where: { id } });
-    if (!before) throw new BusinessError("Oportunidade não encontrada.");
+    const before = await tx.opportunity.findUnique({
+      where: { id },
+      include: includeItems,
+    });
+    if (!before) throw new BusinessError("Contratação não encontrada.");
     const result = await tx.opportunity.updateMany({
       where: { id, version, archived: !archived },
       data: { archived, version: { increment: 1 } },
     });
     if (!result.count)
       throw new BusinessError(
-        "A oportunidade foi alterada. Atualize a página antes de continuar.",
+        "A contratação foi alterada. Atualize a página antes de continuar.",
       );
-    const after = await tx.opportunity.findUniqueOrThrow({ where: { id } });
+    const after = await tx.opportunity.findUniqueOrThrow({
+      where: { id },
+      include: includeItems,
+    });
     await tx.auditLog.create({
       data: {
         actorId,
@@ -191,10 +240,18 @@ export async function getOpportunityStats(db: PrismaClient, now = new Date()) {
   const [open, overdue, dueSoon, values, upcoming] = await db.$transaction([
     db.opportunity.count({ where }),
     db.opportunity.count({
-      where: { ...where, proposalDeadline: { lt: now } },
+      where: {
+        ...where,
+        status: { in: [...DEADLINE_OPPORTUNITY_STATUSES] },
+        proposalDeadline: { lt: now },
+      },
     }),
     db.opportunity.count({
-      where: { ...where, proposalDeadline: { gte: now, lte: until } },
+      where: {
+        ...where,
+        status: { in: [...DEADLINE_OPPORTUNITY_STATUSES] },
+        proposalDeadline: { gte: now, lte: until },
+      },
     }),
     db.opportunity.aggregate({
       where,
@@ -202,7 +259,11 @@ export async function getOpportunityStats(db: PrismaClient, now = new Date()) {
       _count: { estimatedValue: true },
     }),
     db.opportunity.findMany({
-      where: { ...where, proposalDeadline: { gte: now, lte: until } },
+      where: {
+        ...where,
+        status: { in: [...DEADLINE_OPPORTUNITY_STATUSES] },
+        proposalDeadline: { gte: now, lte: until },
+      },
       include: { organization: { select: { legalName: true } } },
       orderBy: [{ proposalDeadline: "asc" }, { id: "asc" }],
       take: 5,
@@ -221,7 +282,7 @@ export async function getOpportunityDetail(db: PrismaClient, id: string) {
   idSchema.parse(id);
   const opportunity = await db.opportunity.findUnique({
     where: { id },
-    include: { organization: true },
+    include: { organization: true, ...includeItems },
   });
   if (!opportunity) return null;
   const [duplicates, history] = await Promise.all([
