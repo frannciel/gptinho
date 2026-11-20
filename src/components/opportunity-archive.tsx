@@ -2,17 +2,19 @@
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, ArchiveRestore } from "lucide-react";
-import { archiveOpportunityAction } from "@/app/(admin)/oportunidades/actions";
+import { archiveOpportunityAction } from "@/app/(admin)/contratacoes/actions";
 export function OpportunityArchive({
   id,
   version,
   reference,
   archived,
+  editing = false,
 }: {
   id: string;
   version: number;
   reference: string;
   archived: boolean;
+  editing?: boolean;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const [error, setError] = useState("");
@@ -40,7 +42,7 @@ export function OpportunityArchive({
         }}
       >
         <h2 id="archive-title" className="text-xl font-bold">
-          {archived ? "Restaurar" : "Arquivar"} oportunidade?
+          {archived ? "Restaurar" : "Arquivar"} contratação?
         </h2>
         <p className="mt-4 text-sm leading-6 text-slate-600">
           {reference}:{" "}
@@ -48,6 +50,12 @@ export function OpportunityArchive({
             ? "voltará à carteira e poderá ser editada novamente."
             : "sairá da carteira ativa e dos indicadores. O cadastro e seu histórico serão preservados."}
         </p>
+        {editing && (
+          <p className="mt-3 text-sm font-semibold text-amber-800">
+            As alterações não salvas neste formulário serão descartadas ao
+            arquivar.
+          </p>
+        )}
         {error && (
           <p role="alert" className="mt-4 text-sm text-red-700">
             {error}
@@ -78,7 +86,7 @@ export function OpportunityArchive({
                   else {
                     dialog.current?.close();
                     router.push(
-                      `/oportunidades?notice=${archived ? "restored" : "archived"}`,
+                      `/contratacoes?notice=${archived ? "restored" : "archived"}`,
                     );
                     router.refresh();
                   }

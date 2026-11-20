@@ -7,7 +7,7 @@ import { deadlineInput } from "../../src/lib/opportunity-values";
 const url = process.env.DATABASE_URL;
 if (!url || !/(_test|govnex-test)/.test(new URL(url).pathname))
   throw new Error(
-    "E2E de oportunidades exige banco descartável com _test no nome.",
+    "E2E de contratações exige banco descartável com _test no nome.",
   );
 const db = createDb(url);
 const suffix = randomUUID();
@@ -22,7 +22,7 @@ test.beforeAll(async () => {
   actorId = (
     await db.user.create({
       data: {
-        name: "Admin de Oportunidades",
+        name: "Admin de Contratações",
         email,
         passwordHash: await hashPassword(password),
         role: "ADMIN",
@@ -55,12 +55,30 @@ test.beforeAll(async () => {
 });
 test.afterAll(async () => {
   try {
-    await db.opportunity.deleteMany({
-      where: {
-        organizationId: {
-          in: [agencyId, supplierId, inactiveId].filter(Boolean),
+    await db.$transaction(async (tx) => {
+      await tx.opportunityItem.deleteMany({
+        where: {
+          opportunityId: {
+            in: (
+              await tx.opportunity.findMany({
+                where: {
+                  organizationId: {
+                    in: [agencyId, supplierId, inactiveId].filter(Boolean),
+                  },
+                },
+                select: { id: true },
+              })
+            ).map((row) => row.id),
+          },
         },
-      },
+      });
+      await tx.opportunity.deleteMany({
+        where: {
+          organizationId: {
+            in: [agencyId, supplierId, inactiveId].filter(Boolean),
+          },
+        },
+      });
     });
     await db.organization.deleteMany({
       where: { id: { in: [agencyId, supplierId, inactiveId].filter(Boolean) } },
@@ -73,28 +91,28 @@ test.afterAll(async () => {
     await db.$disconnect();
   }
 });
-test("oportunidades: cadastro, busca, prazo, edição, dashboard, arquivamento e proteção", async ({
+test("contratações: cadastro, busca, prazo, edição, dashboard, arquivamento e proteção", async ({
   page,
   request,
 }, testInfo) => {
-  for (const path of ["/oportunidades", "/oportunidades/nova"]) {
+  for (const path of ["/contratacoes", "/contratacoes/nova"]) {
     await page.goto(path);
     await expect(page).toHaveURL(/\/login$/);
   }
-  expect((await request.get("/api/admin/oportunidades")).status()).toBe(401);
+  expect((await request.get("/api/admin/contratacoes")).status()).toBe(401);
   await page.getByLabel("E-mail corporativo").fill(email);
   await page.getByLabel("Senha", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await page
     .getByRole("navigation", { name: "Navegação principal" })
-    .getByRole("link", { name: "Oportunidades", exact: true })
+    .getByRole("link", { name: "Contratações", exact: true })
     .click();
   await expect(
-    page.getByRole("heading", { name: "Oportunidades", exact: true }),
+    page.getByRole("heading", { name: "Contratações", exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("link", { name: "Nova oportunidade", exact: true })
+    .getByRole("link", { name: "Nova contratação", exact: true })
     .click();
   await expect(
     page.locator(`#organizationId option[value="${supplierId}"]`),
@@ -113,14 +131,50 @@ test("oportunidades: cadastro, busca, prazo, edição, dashboard, arquivamento e
     .getByLabel("Modalidade de contratação")
     .selectOption("ELECTRONIC_AUCTION");
   await page.getByLabel("Número do processo").fill("12345/2026");
-  await page.getByLabel("Valor estimado (R$)").fill("12.500,50");
+  await expect(page.getByLabel("Valor estimado (R$)")).not.toBeEditable();
+  await page
+    .getByRole("button", { name: "Adicionar item", exact: true })
+    .click();
+  await page
+    .locator("#item-0-description")
+    .fill("Licenças de software de produtividade");
+  await page.locator("#item-0-quantity").fill("2");
+  await page.locator("#item-0-unitPrice").fill("100,1250");
+  await page
+    .getByRole("button", { name: "Adicionar item", exact: true })
+    .click();
+  await page.locator("#item-1-description").fill("Serviço de implantação");
+  await page.locator("#item-1-quantity").fill("1,5");
+  await page.locator("#item-1-unitPrice").fill("10");
+  await expect(page.getByLabel("Valor estimado (R$)")).toHaveValue(
+    "R$\u00a0215,25",
+  );
+  await expect(page.getByLabel("Situação").locator("option")).toHaveText([
+    "Cancelada",
+    "Suspensa",
+    "Homologada",
+    "Proposta Cadastrada",
+    "Encerrada",
+  ]);
+  const help = page.getByRole("button", {
+    name: "Ajuda sobre o prazo de apresentação",
+  });
+  await help.focus();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "data e hora da sessão pública",
+  );
+  await help.press("Escape");
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   const deadline = deadlineInput(new Date(Date.now() + 24 * 60 * 60 * 1000));
   await page
     .getByLabel("Prazo de apresentação", { exact: true })
     .fill(deadline);
   await page
-    .getByLabel("Link da fonte / edital")
-    .fill("https://example.org/edital");
+    .getByLabel("Link da plataforma de licitação")
+    .fill("https://example.org/plataforma");
+  await page
+    .getByLabel("Pasta na nuvem (anexos da licitação)")
+    .fill("https://example.org/anexos");
   await page
     .getByLabel("Observações", { exact: true })
     .fill("Cadastro de teste E2E");
@@ -128,23 +182,21 @@ test("oportunidades: cadastro, busca, prazo, edição, dashboard, arquivamento e
     (req) => req.method() === "POST" && !!req.headers()["next-action"],
   );
   await page
-    .getByRole("button", { name: "Salvar oportunidade", exact: true })
+    .getByRole("button", { name: "Salvar contratação", exact: true })
     .click();
   const savedRequest = await pendingAction;
   await expect(
     page.getByRole("heading", { name: reference, exact: true }),
   ).toBeVisible();
   await expect(page.getByRole("status")).toContainText("salva");
+  await expect(page.getByText("R$\u00a0215,25", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("R$\u00a012.500,50", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Consultar fonte / edital" }),
+    page.getByRole("link", { name: "Plataforma de licitação" }),
   ).toHaveAttribute("rel", "noopener noreferrer");
   const op = await db.opportunity.findUniqueOrThrow({ where: { reference } });
-  expect(op.estimatedValue!.toFixed(2)).toBe("12500.50");
+  expect(op.estimatedValue!.toFixed(2)).toBe("215.25");
   const api = await page.request.get(
-    `/api/admin/oportunidades?q=${encodeURIComponent(reference)}`,
+    `/api/admin/contratacoes?q=${encodeURIComponent(reference)}`,
   );
   expect(api.status()).toBe(200);
   expect(api.headers()["cache-control"]).toBe("no-store");
@@ -152,21 +204,19 @@ test("oportunidades: cadastro, busca, prazo, edição, dashboard, arquivamento e
   expect(body.items[0].id).toBe(op.id);
   expect(typeof body.items[0].estimatedValue).toBe("string");
   expect(
-    (
-      await page.request.get("/api/admin/oportunidades?status=INVALID")
-    ).status(),
+    (await page.request.get("/api/admin/contratacoes?status=INVALID")).status(),
   ).toBe(400);
   await page.getByRole("link", { name: "Visão geral", exact: true }).click();
   await expect(
     page
-      .getByRole("link", { name: /Oportunidades abertas/ })
+      .getByRole("link", { name: /Contratações em acompanhamento/ })
       .getByText("1", { exact: true }),
   ).toBeVisible();
   await page
     .getByRole("navigation", { name: "Navegação principal" })
-    .getByRole("link", { name: "Oportunidades", exact: true })
+    .getByRole("link", { name: "Contratações", exact: true })
     .click();
-  await page.getByLabel("Buscar oportunidade").fill(reference);
+  await page.getByLabel("Buscar contratação").fill(reference);
   await page.getByLabel("Prazo", { exact: true }).selectOption("next7days");
   await page.getByRole("button", { name: "Filtrar", exact: true }).click();
   await expect(
@@ -182,18 +232,31 @@ test("oportunidades: cadastro, busca, prazo, edição, dashboard, arquivamento e
   await expect(
     page.getByLabel("Prazo de apresentação", { exact: true }),
   ).toHaveValue(deadline);
-  await expect(page.getByLabel("Valor estimado (R$)")).toHaveValue("12500,50");
-  await page.getByLabel("Situação").selectOption("IN_ANALYSIS");
+  await expect(page.getByLabel("Valor estimado (R$)")).toHaveValue(
+    "R$\u00a0215,25",
+  );
+  await expect(page.getByLabel("Link da plataforma de licitação")).toHaveValue(
+    "https://example.org/plataforma",
+  );
+  await expect(
+    page.getByLabel("Pasta na nuvem (anexos da licitação)"),
+  ).toHaveValue("https://example.org/anexos");
+  await expect(
+    page.getByRole("button", { name: "Arquivar", exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Situação").selectOption("PROPOSAL_REGISTERED");
   await page
     .getByLabel("Prazo de apresentação", { exact: true })
     .fill("2020-01-01T12:00");
   await page
-    .getByRole("button", { name: "Salvar oportunidade", exact: true })
+    .getByRole("button", { name: "Salvar contratação", exact: true })
     .click();
   await expect(
-    page.getByText(/O prazo de apresentação desta oportunidade está vencido/),
+    page.getByText(/O prazo de apresentação desta contratação está vencido/),
   ).toBeVisible();
-  await expect(page.getByText("Em análise", { exact: true })).toBeVisible();
+  await expect(
+    page.getByText("Proposta Cadastrada", { exact: true }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Arquivar", exact: true }).click();
   await expect(page.getByRole("dialog")).toBeVisible();
   await page
@@ -203,23 +266,35 @@ test("oportunidades: cadastro, busca, prazo, edição, dashboard, arquivamento e
   expect(
     (await db.opportunity.findUniqueOrThrow({ where: { id: op.id } })).archived,
   ).toBe(false);
+  await page
+    .getByRole("link", { name: "Editar contratação", exact: true })
+    .click();
+  await page
+    .getByLabel("Observações", { exact: true })
+    .fill("Alteração não salva que será descartada");
   await page.getByRole("button", { name: "Arquivar", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "As alterações não salvas",
+  );
   await page
     .getByRole("button", { name: "Confirmar arquivamento", exact: true })
     .click();
   await expect(page.getByRole("status")).toContainText("arquivada");
+  expect(
+    (await db.opportunity.findUniqueOrThrow({ where: { id: op.id } })).notes,
+  ).toBe("Cadastro de teste E2E");
   await expect(
     page.getByRole("link", { name: reference, exact: true }),
   ).toHaveCount(0);
   await page.getByLabel("Exibição").selectOption("archived");
-  await page.getByLabel("Buscar oportunidade").fill(reference);
+  await page.getByLabel("Buscar contratação").fill(reference);
   await page.getByRole("button", { name: "Filtrar", exact: true }).click();
   await page.getByRole("link", { name: reference, exact: true }).click();
   await expect(
-    page.getByRole("link", { name: "Editar oportunidade", exact: true }),
+    page.getByRole("link", { name: "Editar contratação", exact: true }),
   ).toHaveCount(0);
-  await page.goto(`/oportunidades/${op.id}/editar`);
-  await expect(page).toHaveURL(new RegExp(`/oportunidades/${op.id}$`));
+  await page.goto(`/contratacoes/${op.id}/editar`);
+  await expect(page).toHaveURL(new RegExp(`/contratacoes/${op.id}$`));
   await page.getByRole("button", { name: "Restaurar", exact: true }).click();
   await page
     .getByRole("button", { name: "Confirmar restauração", exact: true })
@@ -239,6 +314,21 @@ test("oportunidades: cadastro, busca, prazo, edição, dashboard, arquivamento e
     path: testInfo.outputPath("opportunity-mobile.png"),
     fullPage: true,
   });
+  await page
+    .getByRole("link", { name: "Editar contratação", exact: true })
+    .click();
+  const mobileHelp = page.getByRole("button", {
+    name: "Ajuda sobre o prazo de apresentação",
+  });
+  await mobileHelp.click();
+  await expect(page.getByRole("tooltip")).toContainText(
+    "Data limite para apresentação da proposta",
+  );
+  const bounds = await page.getByRole("tooltip").boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
+  await page.getByLabel("Observações", { exact: true }).click();
+  await expect(page.getByRole("tooltip")).toHaveCount(0);
   const cookies = (await page.context().cookies())
     .map((cookie) => `${cookie.name}=${cookie.value}`)
     .join("; ");
@@ -246,12 +336,12 @@ test("oportunidades: cadastro, busca, prazo, edição, dashboard, arquivamento e
   await expect(page).toHaveURL(/\/login$/);
   expect(
     (
-      await request.get("/api/admin/oportunidades", {
+      await request.get("/api/admin/contratacoes", {
         headers: { cookie: cookies },
       })
     ).status(),
   ).toBe(401);
-  const forged = await request.post("/oportunidades/nova", {
+  const forged = await request.post("/contratacoes/nova", {
     headers: {
       "next-action": savedRequest.headers()["next-action"],
       "Content-Type": savedRequest.headers()["content-type"],
@@ -262,7 +352,7 @@ test("oportunidades: cadastro, busca, prazo, edição, dashboard, arquivamento e
   expect(await forged.text()).toContain("Sessão expirada");
   expect(await db.opportunity.count({ where: { reference } })).toBe(1);
 });
-test("oportunidades recusam USER em páginas, API e acesso ao cadastro", async ({
+test("contratações recusam USER em páginas, API e acesso ao cadastro", async ({
   page,
 }) => {
   const readerEmail = `reader-${suffix}@example.org`;
@@ -280,9 +370,9 @@ test("oportunidades recusam USER em páginas, API e acesso ao cadastro", async (
     await page.getByLabel("Senha", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Entrar no sistema" }).click();
     await expect(page).toHaveURL(/\/acesso-negado$/);
-    await page.goto("/oportunidades/nova");
+    await page.goto("/contratacoes/nova");
     await expect(page).toHaveURL(/\/acesso-negado$/);
-    expect((await page.request.get("/api/admin/oportunidades")).status()).toBe(
+    expect((await page.request.get("/api/admin/contratacoes")).status()).toBe(
       403,
     );
   } finally {

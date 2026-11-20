@@ -3,6 +3,8 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Save, LoaderCircle } from "lucide-react";
+import { ContractingItems, type ItemRow } from "./contracting-items";
+import { HelpTooltip } from "./help-tooltip";
 import { Field, FormMessage } from "./form-fields";
 import type { OpportunityInput } from "@/lib/opportunity-validation";
 import type { ActionResult } from "@/lib/validation";
@@ -12,7 +14,7 @@ import {
   PROCUREMENT_METHODS,
   PROCUREMENT_METHOD_VALUES,
 } from "@/lib/opportunity-values";
-import { saveOpportunityAction } from "@/app/(admin)/oportunidades/actions";
+import { saveOpportunityAction } from "@/app/(admin)/contratacoes/actions";
 export type AgencyChoice = {
   id: string;
   legalName: string;
@@ -31,6 +33,12 @@ export function OpportunityForm({
   version?: number;
 }) {
   const [values, setValues] = useState(initial);
+  const [items, setItems] = useState<ItemRow[]>(() =>
+    initial.items.map((item, index) => ({
+      ...item,
+      clientKey: item.id ?? `initial-${index}`,
+    })),
+  );
   const [result, setResult] = useState<ActionResult | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -55,10 +63,20 @@ export function OpportunityForm({
         setResult(null);
         startTransition(async () => {
           try {
-            const response = await saveOpportunityAction(values, id, version);
+            const response = await saveOpportunityAction(
+              {
+                ...values,
+                items: items.map(({ clientKey, ...item }) => {
+                  void clientKey;
+                  return item;
+                }),
+              },
+              id,
+              version,
+            );
             setResult(response);
             if (response.ok && response.id) {
-              router.push(`/oportunidades/${response.id}?notice=saved`);
+              router.push(`/contratacoes/${response.id}?notice=saved`);
               router.refresh();
             }
           } catch {
@@ -79,8 +97,8 @@ export function OpportunityForm({
         </p>
       )}
       <fieldset disabled={pending} className="panel p-6">
-        <legend className="sr-only">Identificação da oportunidade</legend>
-        <h2 className="font-semibold">Identificação da oportunidade</h2>
+        <legend className="sr-only">Identificação da contratação</legend>
+        <h2 className="font-semibold">Identificação da contratação</h2>
         <p className="mt-1 mb-6 text-xs text-slate-500">
           Campos com * são obrigatórios. A identificação deve ser única.
         </p>
@@ -98,7 +116,7 @@ export function OpportunityForm({
               required
               minLength={3}
               maxLength={60}
-              placeholder="Ex.: OP-2026-001"
+              placeholder="Ex.: CT-2026-001"
               onChange={(event) => set("reference", event.target.value)}
             />
           </Field>
@@ -184,31 +202,27 @@ export function OpportunityForm({
         </div>
       </fieldset>
       <fieldset disabled={pending} className="panel p-6">
+        <legend className="sr-only">Itens da contratação</legend>
+        <ContractingItems
+          rows={items}
+          onChange={setItems}
+          errors={result?.errors}
+        />
+      </fieldset>
+      <fieldset disabled={pending} className="panel p-6">
         <legend className="sr-only">Acompanhamento comercial</legend>
         <h2 className="mb-6 font-semibold">Acompanhamento comercial</h2>
         <div className="grid gap-5 md:grid-cols-2">
           <Field
-            name="estimatedValue"
-            label="Valor estimado (R$)"
-            error={result?.errors?.estimatedValue}
-          >
-            <input
-              {...attrs("estimatedValue")}
-              className="field"
-              inputMode="decimal"
-              value={values.estimatedValue}
-              maxLength={40}
-              placeholder="Ex.: 12.500,00"
-              onChange={(event) => set("estimatedValue", event.target.value)}
-            />
-            <p className="mt-1.5 text-xs text-slate-500">
-              Deixe em branco se ainda não souber. Valor estimado não é
-              faturamento.
-            </p>
-          </Field>
-          <Field
             name="proposalDeadline"
             label="Prazo de apresentação"
+            help={
+              <HelpTooltip
+                id="proposalDeadline-help"
+                label="Ajuda sobre o prazo de apresentação"
+                text="Data limite para apresentação da proposta e, nas licitações, data e hora da sessão pública."
+              />
+            }
             error={result?.errors?.proposalDeadline}
           >
             <input
@@ -247,18 +261,33 @@ export function OpportunityForm({
             </select>
           </Field>
           <Field
-            name="sourceUrl"
-            label="Link da fonte / edital"
-            error={result?.errors?.sourceUrl}
+            name="platformUrl"
+            label="Link da plataforma de licitação"
+            error={result?.errors?.platformUrl}
           >
             <input
-              {...attrs("sourceUrl")}
+              {...attrs("platformUrl")}
               className="field"
               type="url"
               placeholder="https://"
               maxLength={2048}
-              value={values.sourceUrl}
-              onChange={(event) => set("sourceUrl", event.target.value)}
+              value={values.platformUrl}
+              onChange={(event) => set("platformUrl", event.target.value)}
+            />
+          </Field>
+          <Field
+            name="attachmentsUrl"
+            label="Pasta na nuvem (anexos da licitação)"
+            error={result?.errors?.attachmentsUrl}
+          >
+            <input
+              {...attrs("attachmentsUrl")}
+              className="field"
+              type="url"
+              placeholder="https://"
+              maxLength={2048}
+              value={values.attachmentsUrl}
+              onChange={(event) => set("attachmentsUrl", event.target.value)}
             />
           </Field>
         </div>
@@ -276,7 +305,7 @@ export function OpportunityForm({
       </fieldset>
       <div className="flex flex-wrap justify-end gap-3">
         <Link
-          href={id ? `/oportunidades/${id}` : "/oportunidades"}
+          href={id ? `/contratacoes/${id}` : "/contratacoes"}
           className="btn-secondary"
           onClick={(event) => {
             if (pending) event.preventDefault();
@@ -290,7 +319,7 @@ export function OpportunityForm({
           ) : (
             <Save size={17} />
           )}{" "}
-          {pending ? "Salvando…" : "Salvar oportunidade"}
+          {pending ? "Salvando…" : "Salvar contratação"}
         </button>
       </div>
     </form>

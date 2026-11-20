@@ -1,5 +1,4 @@
-import { OpportunityEditor } from "@/components/opportunity-editor";
-export const metadata = { title: "Nova oportunidade" };
+import { redirect } from "next/navigation";
 export default function Page() {
-  return <OpportunityEditor />;
+  redirect("/contratacoes/nova");
 }

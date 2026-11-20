@@ -13,7 +13,7 @@ import {
 import { Brand } from "./brand";
 const links = [
   { href: "/dashboard", label: "Visão geral", icon: LayoutDashboard },
-  { href: "/oportunidades", label: "Oportunidades", icon: FileText },
+  { href: "/contratacoes", label: "Contratações", icon: FileText },
   { href: "/orgaos", label: "Órgãos públicos", icon: Landmark },
   { href: "/fornecedores", label: "Fornecedores", icon: Truck },
   { href: "/configuracoes", label: "Configurações", icon: Settings },

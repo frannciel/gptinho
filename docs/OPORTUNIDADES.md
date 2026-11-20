@@ -1,4 +1,6 @@
-# Módulo de oportunidades
+# Módulo de oportunidades — entrega anterior
+
+Esta documentação descreve a entrega anterior. O módulo atual chama-se **Contratações**, com itens, total calculado, dois links e novas situações. Consulte [CONTRATACOES.md](CONTRATACOES.md).
 
 ## Escopo entregue
 

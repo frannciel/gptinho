@@ -69,7 +69,7 @@ export async function saveOrganization(
       (await tx.opportunity.count({ where: { organizationId: id } }))
     )
       throw new BusinessError(
-        "Este órgão possui oportunidades vinculadas e não pode perder o papel de órgão público. Você pode desativá-lo preservando o histórico.",
+        "Este órgão possui contratações vinculadas e não pode perder o papel de órgão público. Você pode desativá-lo preservando o histórico.",
       );
     if (id) {
       const update = await tx.organization.updateMany({

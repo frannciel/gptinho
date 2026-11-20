@@ -42,7 +42,10 @@ const base = {
   ],
 };
 beforeAll(async () => {
-  await db.opportunity.deleteMany();
+  await db.$transaction([
+    db.opportunityItem.deleteMany(),
+    db.opportunity.deleteMany(),
+  ]);
   await db.auditLog.deleteMany();
   await db.contact.deleteMany();
   await db.organization.deleteMany();
@@ -53,6 +56,7 @@ beforeAll(async () => {
 afterAll(async () => {
   try {
     await db.$transaction([
+      db.opportunityItem.deleteMany(),
       db.opportunity.deleteMany(),
       db.auditLog.deleteMany(),
       db.contact.deleteMany(),

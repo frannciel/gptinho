@@ -20,12 +20,23 @@ export function actionError(error: unknown): ActionResult {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002") {
       if (
+        error.meta?.modelName === "OpportunityItem" ||
+        JSON.stringify(error.meta?.target ?? "").includes(
+          "opportunityId_number",
+        )
+      )
+        return {
+          ok: false,
+          message: "Número de item repetido nesta contratação.",
+          errors: { items: ["Revise a numeração dos itens."] },
+        };
+      if (
         error.meta?.modelName === "Opportunity" ||
         JSON.stringify(error.meta?.target ?? "").includes("reference")
       )
         return {
           ok: false,
-          message: "Esta identificação já está em uso por outra oportunidade.",
+          message: "Esta identificação já está em uso por outra contratação.",
           errors: { reference: ["Use uma identificação diferente."] },
         };
       const contactEmail =
