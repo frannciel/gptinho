@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+import { ButtonContent } from "./button-content";
 import { useState } from "react";
 import { Trash2 } from "lucide-react";
 import { ActionForm } from "./action-form";
@@ -167,8 +169,16 @@ export function CatalogItemForm({
         />
         Vencedor
       </label>
-      <div className="flex justify-end">
-        <button className="btn">Salvar item da contratação</button>
+      <div className="mt-6 flex justify-end gap-3 border-t border-slate-200 pt-5">
+        <Link
+          href={`/contratacoes/${opportunityId}/itens`}
+          className="btn-secondary"
+        >
+          <ButtonContent action="cancel" />
+        </Link>
+        <button className="btn" aria-label="Salvar item da contratação">
+          <ButtonContent action="save" />
+        </button>
       </div>
     </ActionForm>
   );

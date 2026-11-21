@@ -32,7 +32,7 @@ export async function listOrganizations(
   const [items, count] = await db.$transaction([
     db.organization.findMany({
       where,
-      orderBy: [{ legalName: "asc" }, { id: "asc" }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * 20,
       take: 20,
       include: { contacts: true },
@@ -149,4 +149,33 @@ export async function deleteOrganization(
       },
     });
   });
+}
+
+const supplierSearchSchema = z.object({
+  status: z.enum(["active", "all"]).default("active"),
+  q: z.string().trim().max(120).default(""),
+  page: z.coerce.number().int().min(1).max(100000).default(1),
+});
+export async function searchSuppliers(db: PrismaClient, params: unknown) {
+  const { q, page, status } = supplierSearchSchema.parse(params);
+  const rows = await db.organization.findMany({
+    where: {
+      ...(status === "active" ? { active: true } : {}),
+      roles: { has: "SUPPLIER" },
+      ...(q
+        ? {
+            OR: [
+              { legalName: { contains: q, mode: "insensitive" } },
+              { tradeName: { contains: q, mode: "insensitive" } },
+              { cnpj: { contains: q.replace(/[.\/-]/g, "") } },
+            ],
+          }
+        : {}),
+    },
+    select: { id: true, legalName: true, active: true },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 21,
+    skip: (page - 1) * 20,
+  });
+  return { items: rows.slice(0, 20), hasMore: rows.length > 20, page };
 }

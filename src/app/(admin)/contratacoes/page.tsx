@@ -1,3 +1,4 @@
+import { ButtonContent } from "@/components/button-content";
 import Link from "next/link";
 import { Plus, Search, FileText, ArrowUpRight, Pencil } from "lucide-react";
 import { requireAdminPage } from "@/lib/authorization";
@@ -75,6 +76,7 @@ export default async function OpportunitiesPage({
       )}
       <section className="panel overflow-hidden">
         <form
+          key={JSON.stringify(filters)}
           method="get"
           className="grid items-end gap-4 border-b border-slate-200 p-5 sm:grid-cols-2 xl:grid-cols-4"
         >
@@ -181,12 +183,11 @@ export default async function OpportunitiesPage({
             </select>
           </div>
           <div className="flex items-center gap-3">
-            <button className="btn-secondary">Filtrar</button>
-            <Link
-              href="/contratacoes"
-              className="text-xs text-slate-500 hover:text-brand-600"
-            >
-              Limpar filtros
+            <button className="btn-secondary">
+              <ButtonContent action="filter" />
+            </button>
+            <Link href="/contratacoes" className="btn-secondary">
+              <ButtonContent action="clear" />
             </Link>
           </div>
         </form>

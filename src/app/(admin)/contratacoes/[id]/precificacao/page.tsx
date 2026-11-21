@@ -1,3 +1,4 @@
+import { ButtonContent } from "@/components/button-content";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireAdminPage } from "@/lib/authorization";
@@ -171,7 +172,7 @@ export default async function PricingPage({
                           className="btn"
                           aria-label={`Salvar precificação do item ${i.number}`}
                         >
-                          Salvar
+                          <ButtonContent action="save" />
                         </button>
                       </ActionForm>
                     )}

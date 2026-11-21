@@ -18,7 +18,12 @@ import {
 } from "@/server/pricing";
 import { saveCatalog } from "@/server/catalog";
 import { itemInput, headerInput } from "@/server/item-input";
-import { saveOrganization, deleteOrganization } from "@/server/organizations";
+import {
+  saveOrganization,
+  deleteOrganization,
+  listOrganizations,
+  searchSuppliers,
+} from "@/server/organizations";
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/(_test|govnex-test)/.test(new URL(url).pathname))
   throw new Error("Suíte exige banco descartável com _test no nome.");
@@ -887,5 +892,83 @@ describe.sequential("Precificação e proposta vencedora", () => {
     const stats = await getOpportunityStats(db);
     expect(stats.open).toBe(1);
     expect(stats.overdue).toBe(0);
+  });
+});
+
+describe.sequential("Ordenação e busca paginada de fornecedores", () => {
+  it("ordena contratações, órgãos e fornecedores por criação decrescente", async () => {
+    const first = await saveOpportunity(db, actorId, {
+      ...base(),
+      reference: "AAA-ANTIGA",
+      proposalDeadline: "2020-01-01T12:00",
+    });
+    const second = await saveOpportunity(db, actorId, {
+      ...base(),
+      reference: "ZZZ-NOVA",
+      proposalDeadline: "2030-01-01T12:00",
+    });
+    await db.opportunity.update({
+      where: { id: first.id },
+      data: { createdAt: new Date("2025-01-01") },
+    });
+    await db.opportunity.update({
+      where: { id: second.id },
+      data: { createdAt: new Date("2026-01-01") },
+    });
+    expect((await listOpportunities(db, {})).items.map((i) => i.id)).toEqual([
+      second.id,
+      first.id,
+    ]);
+    for (const role of ["PUBLIC_AGENCY", "SUPPLIER"] as const) {
+      const q = `ORDER-${randomUUID()}`;
+      const old = await db.organization.create({
+        data: {
+          legalName: `${q} A antiga`,
+          roles: [role],
+          createdAt: new Date("2025-01-01"),
+        },
+      });
+      const recent = await db.organization.create({
+        data: {
+          legalName: `${q} Z nova`,
+          roles: [role],
+          createdAt: new Date("2026-01-01"),
+        },
+      });
+      expect(
+        (await listOrganizations(db, role, { q })).items.map((i) => i.id),
+      ).toEqual([recent.id, old.id]);
+    }
+  });
+  it("busca no servidor, limita a página e exclui inativos e órgãos sem papel de fornecedor", async () => {
+    const q = `LOOKUP-${randomUUID()}`;
+    await db.organization.createMany({
+      data: Array.from({ length: 22 }, (_, index) => ({
+        legalName: `${q} ${index}`,
+        roles: ["SUPPLIER"] as ["SUPPLIER"],
+        createdAt: new Date(1700000000000 + index * 1000),
+      })),
+    });
+    await db.organization.create({
+      data: { legalName: `${q} inativo`, roles: ["SUPPLIER"], active: false },
+    });
+    await db.organization.create({
+      data: { legalName: `${q} órgão`, roles: ["PUBLIC_AGENCY"] },
+    });
+    const first = await searchSuppliers(db, { q });
+    const second = await searchSuppliers(db, { q, page: 2 });
+    expect(first.items).toHaveLength(20);
+    expect(first.hasMore).toBe(true);
+    expect(first.items[0].legalName).toBe(`${q} 21`);
+    expect(second.items).toHaveLength(2);
+    expect(second.hasMore).toBe(false);
+    expect(
+      (await searchSuppliers(db, { q, status: "all" })).items.some(
+        (i) => !i.active,
+      ),
+    ).toBe(true);
+    expect(
+      new Set([...first.items, ...second.items].map((i) => i.id)).size,
+    ).toBe(22);
   });
 });

@@ -174,8 +174,6 @@ export const opportunityFilters = z.object({
   organizationId: z.union([z.literal(""), idSchema]).default(""),
   deadline: z.enum(["all", "overdue", "next7days", "without"]).default("all"),
   archived: z.enum(["active", "archived", "all"]).default("active"),
-  sort: z
-    .enum(["deadline", "newest", "value", "reference"])
-    .default("deadline"),
+  sort: z.enum(["deadline", "newest", "value", "reference"]).default("newest"),
   page: z.coerce.number().int().min(1).max(100000).default(1),
 });

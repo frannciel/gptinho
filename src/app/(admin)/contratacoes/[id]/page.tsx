@@ -1,4 +1,5 @@
 import { ContractingTabs } from "@/components/contracting-tabs";
+import { ButtonContent } from "@/components/button-content";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil, ExternalLink } from "lucide-react";
@@ -32,11 +33,8 @@ export default async function OpportunityDetail({
   const search = await searchParams;
   return (
     <>
-      <Link
-        href="/contratacoes"
-        className="mb-6 inline-flex text-sm text-slate-500 hover:text-brand-600"
-      >
-        ← Voltar às contratações
+      <Link href="/contratacoes" className="btn-secondary mb-6">
+        <ButtonContent action="back" />
       </Link>
       <PageHeader
         eyebrow="Comercial · Contratação"

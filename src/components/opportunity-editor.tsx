@@ -1,3 +1,4 @@
+import { ButtonContent } from "@/components/button-content";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireAdminPage } from "@/lib/authorization";
@@ -78,9 +79,9 @@ export async function OpportunityEditor({ id }: { id?: string }) {
     <div className="max-w-4xl">
       <Link
         href={id ? `/contratacoes/${id}` : "/contratacoes"}
-        className="mb-6 inline-flex text-sm text-slate-500 hover:text-brand-600"
+        className="btn-secondary mb-6"
       >
-        ← Voltar
+        <ButtonContent action="back" />
       </Link>
       <PageHeader
         eyebrow="Comercial · Contratações"

@@ -1,10 +1,10 @@
+import { ButtonContent } from "@/components/button-content";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { OrganizationRole } from "@prisma/client";
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
 import { idSchema } from "@/lib/validation";
-import { ArrowLeft } from "lucide-react";
 import { PageHeader } from "./page-header";
 import {
   OrganizationForm,
@@ -73,12 +73,8 @@ export async function OrganizationEditor({
   }
   return (
     <div className="max-w-4xl">
-      <Link
-        href={base}
-        className="mb-6 inline-flex items-center gap-2 text-xs font-medium text-slate-500 hover:text-brand-600"
-      >
-        <ArrowLeft size={15} />
-        Voltar para {agency ? "órgãos públicos" : "fornecedores"}
+      <Link href={base} className="btn-secondary mb-6">
+        <ButtonContent action="back" />
       </Link>
       <PageHeader
         eyebrow="Relacionamentos · Cadastro"

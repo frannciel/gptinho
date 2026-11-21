@@ -123,6 +123,9 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
     await expect(page).toHaveURL(/\/login$/);
   }
   expect((await request.get("/api/admin/contratacoes")).status()).toBe(401);
+  expect((await request.get("/api/admin/fornecedores/busca")).status()).toBe(
+    401,
+  );
   await page.getByLabel("E-mail corporativo").fill(email);
   await page.getByLabel("Senha", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Entrar no sistema" }).click();
@@ -142,6 +145,8 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
   );
   await modal.getByLabel("Marca", { exact: true }).fill("Marca E2E");
   await modal.getByLabel("Modelo", { exact: true }).fill("Modelo E2E");
+  await expect(modal.getByLabel("Unidade", { exact: false })).toHaveValue("");
+  await modal.getByLabel("Unidade", { exact: false }).fill("LIC");
   await modal
     .getByLabel("Alíquota tributária (%)", { exact: false })
     .fill("10,00");
@@ -149,18 +154,18 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
   await expect(modal.getByText("Margem (%)")).toHaveCount(0);
   await modal.getByLabel("Pesquisar fornecedores").fill("Somente Fornecedor");
   await modal
-    .getByRole("checkbox", {
+    .getByRole("option", {
       name: `Somente Fornecedor ${suffix}`,
       exact: true,
     })
-    .check();
+    .click();
   await modal.getByLabel("Pesquisar fornecedores").fill("Segundo Fornecedor");
   await modal
-    .getByRole("checkbox", {
+    .getByRole("option", {
       name: `Segundo Fornecedor ${suffix}`,
       exact: true,
     })
-    .check();
+    .click();
   await modal
     .getByRole("button", { name: "Salvar item do catálogo", exact: true })
     .click();
@@ -174,8 +179,12 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
   await page.getByLabel("Tipo", { exact: true }).selectOption("SERVICE");
   await page.getByLabel("Marca", { exact: true }).selectOption("Marca E2E");
   await page
-    .getByLabel("Fornecedor", { exact: true })
-    .selectOption(secondSupplierId);
+    .getByLabel("Pesquisar fornecedor", { exact: true })
+    .fill("Segundo Fornecedor");
+  await page
+    .getByRole("listbox", { name: "Resultados de fornecedores" })
+    .getByRole("option", { name: `Segundo Fornecedor ${suffix}`, exact: true })
+    .click();
   await page.getByRole("button", { name: "Filtrar", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "Licenças catálogo E2E", exact: true }),
@@ -400,8 +409,92 @@ test("contratações recusam USER em páginas, API e acesso ao cadastro", async 
     expect((await page.request.get("/api/admin/contratacoes")).status()).toBe(
       403,
     );
+    expect(
+      (await page.request.get("/api/admin/fornecedores/busca")).status(),
+    ).toBe(403);
   } finally {
     await db.auditLog.deleteMany({ where: { actorId: user.id } });
     await db.user.delete({ where: { id: user.id } });
   }
+});
+test("catálogo: ativos por padrão, filtro de inativos, mais recentes e fornecedores por linha", async ({
+  page,
+}) => {
+  const term = `LISTA-${suffix}`;
+  for (const [name, active, createdAt] of [
+    [`${term} A antigo`, true, "2025-01-01"],
+    [`${term} Z recente`, true, "2026-01-01"],
+    [`${term} Inativo`, false, "2027-01-01"],
+  ] as const)
+    await db.catalogProduct.create({
+      data: {
+        description: name,
+        unit: "UN",
+        type: "MATERIAL",
+        taxRate: "10",
+        supplierId,
+        active,
+        createdAt: new Date(createdAt),
+        suppliers: {
+          create: [{ supplierId }, { supplierId: secondSupplierId }],
+        },
+      },
+    });
+  await page.goto("/login");
+  await page.getByLabel("E-mail corporativo").fill(email);
+  await page.getByLabel("Senha", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto(`/catalogo?q=${term}`);
+  await expect(page.getByLabel("Situação", { exact: true })).toHaveValue(
+    "active",
+  );
+  const descriptions = page.locator("tbody tr td:first-child");
+  await expect(descriptions).toHaveText([
+    `${term} Z recente`,
+    `${term} A antigo`,
+  ]);
+  const dropdown = page.getByRole("combobox", {
+    name: `Fornecedores de ${term} Z recente`,
+    exact: true,
+  });
+  await expect(dropdown.locator("option")).toHaveCount(3);
+  await dropdown.selectOption(secondSupplierId);
+  await page.getByLabel("Situação", { exact: true }).selectOption("inactive");
+  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
+  await expect(page.locator("tbody tr")).toHaveCount(1);
+  await expect(page.locator("tbody tr td:first-child")).toContainText(
+    `${term} Inativo`,
+  );
+  await page.getByRole("link", { name: "Limpar", exact: true }).click();
+  await expect(page.getByLabel("Situação", { exact: true })).toHaveValue(
+    "active",
+  );
+  await expect(page.getByText(`${term} Inativo`, { exact: true })).toHaveCount(
+    0,
+  );
+  await page.getByRole("link", { name: "Novo item", exact: true }).click();
+  const modal = page.getByRole("dialog");
+  await expect(modal.getByLabel("Unidade", { exact: false })).toHaveValue("");
+  await modal.getByLabel("Pesquisar fornecedores").fill("Somente Fornecedor");
+  const option = modal.getByRole("option", {
+    name: `Somente Fornecedor ${suffix}`,
+    exact: true,
+  });
+  await option.click();
+  await expect(
+    modal.getByRole("button", {
+      name: `Remover Somente Fornecedor ${suffix}`,
+      exact: true,
+    }),
+  ).toBeVisible();
+  await modal
+    .getByRole("button", {
+      name: `Remover Somente Fornecedor ${suffix}`,
+      exact: true,
+    })
+    .click();
+  await expect(modal.locator('input[name="supplierIds"]')).toHaveCount(0);
+  await modal.getByRole("link", { name: "Cancelar", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 });
