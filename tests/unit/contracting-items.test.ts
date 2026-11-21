@@ -128,10 +128,11 @@ describe("Totais derivados dos itens", () => {
   });
 });
 describe("Situações e links de contratação", () => {
-  it("oferece as seis situações incluindo Classificada", () => {
+  it("oferece as sete situações incluindo Em Análise", () => {
     expect(
       OPPORTUNITY_STATUS_VALUES.map((value) => OPPORTUNITY_STATUSES[value]),
     ).toEqual([
+      "Em Análise",
       "Classificada",
       "Cancelada",
       "Suspensa",

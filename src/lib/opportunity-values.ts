@@ -1,4 +1,5 @@
 export const OPPORTUNITY_STATUS_VALUES = [
+  "IN_ANALYSIS",
   "CLASSIFIED",
   "CANCELLED",
   "SUSPENDED",
@@ -10,6 +11,7 @@ export const OPPORTUNITY_STATUSES: Record<
   (typeof OPPORTUNITY_STATUS_VALUES)[number],
   string
 > = {
+  IN_ANALYSIS: "Em Análise",
   CLASSIFIED: "Classificada",
   CANCELLED: "Cancelada",
   SUSPENDED: "Suspensa",
@@ -18,12 +20,16 @@ export const OPPORTUNITY_STATUSES: Record<
   CLOSED: "Encerrada",
 };
 export const OPEN_OPPORTUNITY_STATUSES = [
+  "IN_ANALYSIS",
   "CLASSIFIED",
   "PROPOSAL_REGISTERED",
   "SUSPENDED",
   "HOMOLOGATED",
 ] as const;
-export const DEADLINE_OPPORTUNITY_STATUSES = ["PROPOSAL_REGISTERED"] as const;
+export const DEADLINE_OPPORTUNITY_STATUSES = [
+  "IN_ANALYSIS",
+  "PROPOSAL_REGISTERED",
+] as const;
 export const PROCUREMENT_METHOD_VALUES = [
   "UNDEFINED",
   "ELECTRONIC_AUCTION",

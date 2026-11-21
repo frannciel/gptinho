@@ -1,5 +1,7 @@
 # Implantação, Neon e Vercel
 
+Para Em Análise e exclusão protegida, aplique as migrations conforme [CONTRATACOES_EXCLUSAO_MARGEM.md](CONTRATACOES_EXCLUSAO_MARGEM.md) antes do deploy.
+
 Para precificação, fornecedores múltiplos e proposta vencedora, siga [PRECIFICACAO.md](PRECIFICACAO.md) e aplique a migration correspondente antes do deploy.
 
 Para o catálogo e o gerenciamento separado de itens, siga [CATALOGO.md](CATALOGO.md). Aplique a nova migration antes do deploy.

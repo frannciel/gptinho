@@ -36,3 +36,7 @@ O usuário solicitou ocultar inativos por padrão com consulta por situação, d
 ## Resumo financeiro e situação da proposta vencedora
 
 O usuário confirmou receita estimada para todos os itens e oferta vencedora para os vencedores, com tributos e custo administrativo sobre a respectiva receita. Lucro líquido é a diferença entre receita e custos; percentual apurado usa o custo de aquisição como denominador. Componentes monetários são arredondados por item em centavos com HALF_UP, e o percentual geral é ponderado pela aquisição. Situação e oferta são atualizadas atomicamente após escolha explícita de Classificada ou Homologada quando necessário. Sem nova migration.
+
+## Revisão: Em Análise, exclusão e margem sobre receita
+
+A nova instrução do usuário substitui a base anterior do percentual apurado: agora lucro líquido / receita, tanto no resumo quanto no indicador das ofertas. O indicador é apenas exibição e o botão Salvar volta a Ações. Em Análise é padrão somente para novas contratações. Exclusão física exige confirmação e é vedada para arquivadas ou vinculadas a contratos. Cria-se o vínculo mínimo Contract para esse bloqueio no banco; o módulo completo de contratos permanece para entrega futura.

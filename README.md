@@ -160,3 +160,5 @@ A entrega de [precificação e proposta vencedora](docs/PRECIFICACAO.md) acresce
 Os ajustes de [catálogo, filtros e padrão de ações](docs/CATALOGO_USABILIDADE.md) definem a consulta de ativos/inativos, fornecedores pesquisáveis e a ordenação por criação.
 
 A entrega de [resumo financeiro e controle da proposta vencedora](docs/RESUMO_FINANCEIRO.md) documenta as bases confirmadas de cálculo e os ajustes mais recentes da interface.
+
+A atualização de [Em Análise, exclusão protegida e margem sobre receita](docs/CONTRATACOES_EXCLUSAO_MARGEM.md) descreve as migrations mais recentes e os ajustes do Resumo Financeiro.

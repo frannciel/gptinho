@@ -56,6 +56,7 @@ export function financialSummary(
       ? null
       : rows.reduce((sum, row) => sum + row[field]!, 0n);
   const acquisition = sum("acquisition"),
+    revenue = sum("revenue"),
     profit = sum("profit");
   return {
     acquisition: acquisition === null ? null : text(acquisition),
@@ -65,9 +66,9 @@ export function financialSummary(
       sum("administrative") === null ? null : text(sum("administrative")!),
     profit: profit === null ? null : text(profit),
     profitRate:
-      profit === null || acquisition === null || acquisition === 0n
+      profit === null || revenue === null || revenue === 0n
         ? null
-        : text(round(profit * 10000n, acquisition)),
+        : text(round(profit * 10000n, revenue)),
     count: items.length,
   };
 }
@@ -75,8 +76,8 @@ export function itemProfitRate(
   item: FinancialItem,
   revenueUnit: string | null,
 ) {
-  const { profit, acquisition } = itemFinancials(item, revenueUnit);
-  return profit === null || acquisition === null || acquisition === 0n
+  const { profit, revenue } = itemFinancials(item, revenueUnit);
+  return profit === null || revenue === null || revenue === 0n
     ? null
-    : text(round(profit * 10000n, acquisition));
+    : text(round(profit * 10000n, revenue));
 }

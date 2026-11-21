@@ -49,6 +49,9 @@ export function WinningOfferForm({
       <input type="hidden" name="itemId" value={itemId} />
       <input type="hidden" name="version" value={version} />
       <input type="hidden" ref={nextStatus} name="nextStatus" defaultValue="" />
+      <button className="btn" aria-label={`Salvar proposta do item ${number}`}>
+        <ButtonContent action="save" />
+      </button>
       <dialog
         ref={dialog}
         aria-label={`Atualizar situação para registrar proposta do item ${number}`}

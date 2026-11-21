@@ -7,6 +7,7 @@ import { actionError } from "@/lib/errors";
 import {
   saveOpportunity,
   archiveOpportunity,
+  deleteOpportunity,
   listOpportunities,
   getOpportunityStats,
   getOpportunityDetail,
@@ -69,6 +70,7 @@ const base = () => ({
 async function cleanup() {
   await db.$transaction([
     db.opportunityItem.deleteMany(),
+    db.contract.deleteMany(),
     db.opportunity.deleteMany(),
     db.catalogProduct.deleteMany(),
     db.auditLog.deleteMany(),
@@ -104,6 +106,7 @@ beforeAll(async () => {
 beforeEach(async () => {
   await db.$transaction([
     db.opportunityItem.deleteMany(),
+    db.contract.deleteMany(),
     db.opportunity.deleteMany(),
     db.catalogProduct.deleteMany(),
   ]);
@@ -982,6 +985,7 @@ describe.sequential("Situação da proposta e histórico recente", () => {
     });
     const item = op.items[0];
     for (const status of [
+      "IN_ANALYSIS",
       "PROPOSAL_REGISTERED",
       "CANCELLED",
       "SUSPENDED",
@@ -1050,5 +1054,68 @@ describe.sequential("Situação da proposta e histórico recente", () => {
     expect(JSON.stringify(detail?.history[0].changes)).toContain(
       "Atualização 6",
     );
+  });
+});
+
+describe.sequential("Exclusão de contratação e padrão Em Análise", () => {
+  it("usa Em Análise por padrão sem reclassificar contratações existentes", async () => {
+    const { status: previous, ...input } = base();
+    void previous;
+    const op = await saveOpportunity(db, actorId, input);
+    expect(op.status).toBe("IN_ANALYSIS");
+  });
+  it("exclui itens e contratação atomicamente, preservando auditoria e catálogo", async () => {
+    const product = await saveCatalog(db, actorId, {
+      description: "Produto preservado",
+      brand: "",
+      model: "",
+      type: "MATERIAL",
+      unit: "UN",
+      taxRate: "0",
+      supplierIds: [supplierId],
+    });
+    const op = await saveOpportunity(db, actorId, {
+      ...base(),
+      items: [{ ...base().items[0], catalogProductId: product.id }],
+    });
+    await deleteOpportunity(db, actorId, op.id, op.version);
+    expect(
+      await db.opportunity.findUnique({ where: { id: op.id } }),
+    ).toBeNull();
+    expect(
+      await db.opportunityItem.count({ where: { opportunityId: op.id } }),
+    ).toBe(0);
+    expect(
+      await db.catalogProduct.findUnique({ where: { id: product.id } }),
+    ).not.toBeNull();
+    expect(
+      (
+        await db.auditLog.findFirstOrThrow({
+          where: { entityId: op.id, action: "DELETE" },
+        })
+      ).changes,
+    ).toMatchObject({ after: null });
+  });
+  it("recusa arquivadas, contratos associados e versões desatualizadas sem perder itens", async () => {
+    const op = await saveOpportunity(db, actorId, base());
+    await expect(
+      deleteOpportunity(db, actorId, op.id, op.version + 1),
+    ).rejects.toThrow("alterada");
+    await db.contract.create({
+      data: { opportunityId: op.id, reference: "CONTRATO-01" },
+    });
+    await expect(
+      deleteOpportunity(db, actorId, op.id, op.version),
+    ).rejects.toThrow("contratos associados");
+    await expect(
+      db.opportunity.delete({ where: { id: op.id } }),
+    ).rejects.toThrow();
+    await archiveOpportunity(db, actorId, op.id, op.version, true);
+    await expect(
+      deleteOpportunity(db, actorId, op.id, op.version + 1),
+    ).rejects.toThrow("arquivadas");
+    expect(
+      await db.opportunityItem.count({ where: { opportunityId: op.id } }),
+    ).toBe(1);
   });
 });

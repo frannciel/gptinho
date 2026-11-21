@@ -328,7 +328,11 @@ export async function getOpportunityDetail(db: PrismaClient, id: string) {
   idSchema.parse(id);
   const opportunity = await db.opportunity.findUnique({
     where: { id },
-    include: { organization: true, ...includeItems },
+    include: {
+      organization: true,
+      _count: { select: { contracts: true } },
+      ...includeItems,
+    },
   });
   if (!opportunity) return null;
   const [duplicates, history] = await Promise.all([
@@ -351,4 +355,48 @@ export async function getOpportunityDetail(db: PrismaClient, id: string) {
     }),
   ]);
   return { opportunity, duplicates, history };
+}
+
+export async function deleteOpportunity(
+  db: PrismaClient,
+  actorId: string,
+  id: string,
+  version: number,
+) {
+  idSchema.parse(id);
+  z.number().int().positive().parse(version);
+  return db.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT "id" FROM "Opportunity" WHERE "id" = ${id} FOR UPDATE`;
+      const before = await tx.opportunity.findUnique({
+        where: { id },
+        include: includeItems,
+      });
+      if (!before) throw new BusinessError("Contratação não encontrada.");
+      if (before.archived)
+        throw new BusinessError(
+          "Contratações arquivadas não podem ser excluídas.",
+        );
+      if (before.version !== version)
+        throw new BusinessError(
+          "A contratação foi alterada. Atualize a página antes de excluir.",
+        );
+      if (await tx.contract.count({ where: { opportunityId: id } }))
+        throw new BusinessError(
+          "Contratações com contratos associados não podem ser excluídas.",
+        );
+      await tx.opportunityItem.deleteMany({ where: { opportunityId: id } });
+      await tx.opportunity.delete({ where: { id } });
+      await tx.auditLog.create({
+        data: {
+          actorId,
+          entity: "Opportunity",
+          entityId: id,
+          action: "DELETE",
+          changes: JSON.parse(JSON.stringify({ before, after: null })),
+        },
+      });
+    },
+    { timeout: 20000 },
+  );
 }

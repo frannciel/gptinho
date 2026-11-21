@@ -1,0 +1,1 @@
+ALTER TYPE "ContractingStatus" ADD VALUE 'IN_ANALYSIS';

@@ -39,11 +39,13 @@ export default async function OpportunitiesPage({
   const href = (page: number) =>
     `/contratacoes?${new URLSearchParams({ ...filters, page: String(page) })}`;
   const notice =
-    params.notice === "archived"
-      ? "Contratação arquivada. O histórico foi preservado."
-      : params.notice === "restored"
-        ? "Contratação restaurada."
-        : null;
+    params.notice === "deleted"
+      ? "Contratação excluída."
+      : params.notice === "archived"
+        ? "Contratação arquivada. O histórico foi preservado."
+        : params.notice === "restored"
+          ? "Contratação restaurada."
+          : null;
   return (
     <>
       <PageHeader
