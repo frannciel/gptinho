@@ -15,34 +15,38 @@ const item: FinancialItem = {
   pricingAdministrativeRate: "5.00",
 };
 describe("resumo financeiro decimal", () => {
-  it("apura referência com tributos e despesa sobre receita e lucro sobre aquisição", () =>
+  it("permite aquisição zero com receita positiva", () =>
+    expect(
+      itemProfitRate({ ...item, acquisitionUnit: "0.0000" }, "180.1234"),
+    ).toBe("79.45"));
+  it("apura referência com tributos e despesa sobre receita e lucro sobre receita", () =>
     expect(financialSummary([item], "estimated")).toMatchObject({
       acquisition: "200.00",
       freight: "20.00",
       taxes: "20.03",
       administrative: "10.01",
       profit: "-49.79",
-      profitRate: "-24.90",
+      profitRate: "-24.86",
     }));
   it("apura oferta vencedora e simulação com a mesma regra", () => {
     expect(financialSummary([item], "winning")).toMatchObject({
       taxes: "36.03",
       administrative: "18.01",
       profit: "86.21",
-      profitRate: "43.11",
+      profitRate: "23.93",
     });
-    expect(itemProfitRate(item, "180.1234")).toBe("43.11");
+    expect(itemProfitRate(item, "180.1234")).toBe("23.93");
   });
-  it("soma os resultados dos itens e calcula percentual ponderado pela aquisição", () => {
+  it("soma os resultados dos itens e calcula percentual ponderado pela receita", () => {
     const summary = financialSummary(
       [item, { ...item, quantity: "1.000", acquisitionUnit: "50.0000" }],
       "winning",
     );
     expect(summary.acquisition).toBe("250.00");
     expect(summary.profit).toBe("179.31");
-    expect(summary.profitRate).toBe("71.72");
+    expect(summary.profitRate).toBe("33.18");
   });
-  it("mantém pendências e diferencia aquisição zero", () => {
+  it("mantém pendências e diferencia receita zero", () => {
     expect(
       financialSummary([{ ...item, winningUnitPrice: null }], "winning").profit,
     ).toBeNull();
@@ -50,9 +54,7 @@ describe("resumo financeiro decimal", () => {
       financialSummary([{ ...item, acquisitionUnit: null }], "winning")
         .acquisition,
     ).toBeNull();
-    expect(
-      itemProfitRate({ ...item, acquisitionUnit: "0.0000" }, "180.1234"),
-    ).toBeNull();
+    expect(itemProfitRate(item, "0.0000")).toBeNull();
   });
   it("oferece totais zero para conjunto vazio sem inventar percentual", () =>
     expect(financialSummary([], "winning")).toMatchObject({

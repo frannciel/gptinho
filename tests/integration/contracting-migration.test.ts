@@ -147,3 +147,61 @@ it("migra catálogo sem transformar margem em tributo e preserva fornecedores", 
     await client.query(`DROP SCHEMA "${schema}" CASCADE`);
   }
 });
+it("define Em Análise somente para novos registros e protege vínculos de contrato", async () => {
+  const schema = `deletion_${randomUUID().replaceAll("-", "")}`;
+  await client.query(`CREATE SCHEMA "${schema}"`);
+  try {
+    await client.query(`SET search_path TO "${schema}"`);
+    for (const migration of [
+      "20261118000100_foundation",
+      "20261119000100_cadastros_enderecos_contatos",
+      "20261119000200_opportunities",
+      "20261120000100_contracting_items",
+      "20261120000200_product_catalog",
+      "20261120000300_pricing_winners",
+    ])
+      await client.query(
+        readFileSync(`prisma/migrations/${migration}/migration.sql`, "utf8"),
+      );
+    await client.query(
+      `INSERT INTO "Organization" (id,"legalName",roles,"updatedAt") VALUES ('agency','Órgão teste',ARRAY['PUBLIC_AGENCY']::"OrganizationRole"[],NOW())`,
+    );
+    await client.query(
+      `INSERT INTO "Opportunity" (id,reference,"organizationId",subject,"updatedAt") VALUES ('old','OLD','agency','Objeto legado válido',NOW())`,
+    );
+    for (const migration of [
+      "20261121000100_analysis_status",
+      "20261121000200_contracting_deletion",
+    ])
+      await client.query(
+        readFileSync(`prisma/migrations/${migration}/migration.sql`, "utf8"),
+      );
+    await client.query(
+      `INSERT INTO "Opportunity" (id,reference,"organizationId",subject,"updatedAt") VALUES ('new','NEW','agency','Objeto novo válido',NOW())`,
+    );
+    expect(
+      (
+        await client.query(
+          `SELECT "contractingStatus"::text AS status FROM "Opportunity" WHERE id='old'`,
+        )
+      ).rows[0].status,
+    ).toBe("PROPOSAL_REGISTERED");
+    expect(
+      (
+        await client.query(
+          `SELECT "contractingStatus"::text AS status FROM "Opportunity" WHERE id='new'`,
+        )
+      ).rows[0].status,
+    ).toBe("IN_ANALYSIS");
+    await client.query(
+      `INSERT INTO "Contract" (id,"opportunityId",reference,"updatedAt") VALUES ('contract','new','CONTRACT-1',NOW())`,
+    );
+    await expect(
+      client.query(`DELETE FROM "Opportunity" WHERE id='new'`),
+    ).rejects.toMatchObject({ code: "23503" });
+  } finally {
+    await client.query("ROLLBACK");
+    await client.query("SET search_path TO public");
+    await client.query(`DROP SCHEMA "${schema}" CASCADE`);
+  }
+});

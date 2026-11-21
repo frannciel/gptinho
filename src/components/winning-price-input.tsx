@@ -44,19 +44,17 @@ export function WinningPriceInput({
             }
           }}
         />
-        <button
-          type="submit"
-          form={formId}
-          disabled={disabled}
-          className={`btn shrink-0 rounded-l-none ${rate?.startsWith("-") ? "bg-red-700 hover:bg-red-800" : ""}`}
-          aria-label={`Salvar proposta do item ${number}`}
-          title="Salvar proposta. Percentual de lucro líquido sobre o custo de aquisição."
+        <output
+          className={`flex shrink-0 items-center justify-center rounded-r-lg border border-l-0 px-3 text-sm font-semibold ${rate?.startsWith("-") ? "border-red-200 bg-red-50 text-red-800" : "border-slate-300 bg-slate-50 text-slate-800"}`}
+          aria-label={`Lucro líquido do item ${number}`}
+          aria-live="polite"
+          title="Percentual de lucro líquido sobre a receita."
         >
           {rate === null ? "—" : `${rate.replace(".", ",")}%`}
-        </button>
+        </output>
       </div>
       <p className="mt-1 text-xs text-slate-500">
-        Lucro líquido / aquisição · simulação
+        Lucro líquido / receita · simulação
       </p>
     </div>
   );

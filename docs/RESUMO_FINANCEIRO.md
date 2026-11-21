@@ -1,5 +1,7 @@
 # Resumo financeiro e controle da proposta vencedora
 
+A revisão mais recente está em [CONTRATACOES_EXCLUSAO_MARGEM.md](CONTRATACOES_EXCLUSAO_MARGEM.md): percentual sobre receita, exclusão protegida e Em Análise como padrão.
+
 ## Base de cálculo confirmada pelo usuário
 
 Na coluna **Todos os itens**, a receita usa o valor unitário estimado de cada item multiplicado pela quantidade. Na coluna **Itens vencedores**, usa a oferta unitária vencedora multiplicada pela quantidade dos itens marcados como vencedores.
@@ -8,10 +10,10 @@ Os custos unitários de aquisição e frete vêm da precificação. Tributos e c
 
 ```text
 Lucro líquido = receita − aquisição − frete − tributos − custo administrativo
-Percentual apurado = lucro líquido / custo de aquisição × 100
+Percentual apurado = lucro líquido / receita total × 100
 ```
 
-Esse percentual apurado sobre aquisição é diferente do parâmetro Lucro Líquido (%) da precificação, que integra a fórmula de preço mínimo como percentual sobre a venda. O parâmetro de precificação permanece preservado.
+O percentual apurado usa a receita como denominador. O lucro efetivo considera os custos e a receita da coluna selecionada; os parâmetros históricos da precificação permanecem preservados.
 
 ## Precisão e pendências
 
@@ -19,17 +21,17 @@ Esse percentual apurado sobre aquisição é diferente do parâmetro Lucro Líqu
 - Cada total de receita, aquisição e frete é calculado por item e arredondado para centavos.
 - Tributos e despesa administrativa são calculados sobre a receita do item já expressa em centavos, com percentuais de duas casas, e arredondados para centavos.
 - O lucro é a diferença desses componentes. Os resumos somam os resultados dos itens.
-- O percentual geral é lucro total dividido pelo custo total de aquisição, com duas casas; não é a média dos percentuais individuais.
-- Valores ausentes aparecem como Pendente. Aquisição igual a zero não permite apurar percentual, apresentado como Não apurável. Conjunto vazio tem totais zero, sem inventar percentual.
+- O percentual geral é lucro total dividido pela receita total, com duas casas; não é a média dos percentuais individuais.
+- Valores ausentes aparecem como Pendente. Receita igual a zero não permite apurar percentual, apresentado como Não apurável. Conjunto vazio tem totais zero, sem inventar percentual.
 - Prejuízos são exibidos como valores negativos.
 
-Exemplo: quantidade 2, estimativa unitária 100,1250, oferta vencedora 180,1234, aquisição unitária 100,0000, frete unitário 10,0000, tributos 10% e custo administrativo 5%. O resultado estimado é −R$ 49,79 (−24,90% sobre aquisição); o resultado vencedor é R$ 86,21 (43,11% sobre aquisição).
+Exemplo: quantidade 2, estimativa unitária 100,1250, oferta vencedora 180,1234, aquisição unitária 100,0000, frete unitário 10,0000, tributos 10% e custo administrativo 5%. O resultado estimado é −R$ 49,79 (−24,86% sobre receita); o resultado vencedor é R$ 86,21 (23,93% sobre receita).
 
 ## Interface
 
 - A consulta da contratação apresenta o Resumo Financeiro em duas colunas.
-- O campo de oferta vencedora tem input e botão integrados. O botão exibe o percentual simulado de lucro líquido do item e salva a oferta. A simulação usa a mesma função decimal dos cálculos da tela de resumo; os valores persistidos e as regras são validados no backend.
-- O botão mostra — quando o percentual não é apurável, por custos pendentes, receita ausente ou aquisição zero.
+- O campo de oferta vencedora tem input e caixa de exibição do percentual de lucro integrados. O botão Salvar fica na coluna Ações. A simulação usa a mesma função decimal dos cálculos da tela de resumo; os valores persistidos e as regras são validados no backend.
+- O botão mostra — quando o percentual não é apurável, por custos pendentes, receita ausente ou receita zero.
 - Total passa a Total Estimado nas tabelas. Gerenciar itens apresenta Valor Total Estimado no rodapé.
 - Histórico recente consulta e exibe apenas cinco atualizações.
 - O menu lateral desktop pode ser ocultado e exibido pelo botão do cabeçalho. A preferência é mantida durante a navegação e reinicia com uma nova carga da aplicação. A navegação móvel permanece disponível.

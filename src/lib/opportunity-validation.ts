@@ -123,7 +123,7 @@ export const opportunitySchema = z
           return z.NEVER;
         }
       }),
-    status: z.enum(OPPORTUNITY_STATUS_VALUES),
+    status: z.enum(OPPORTUNITY_STATUS_VALUES).default("IN_ANALYSIS"),
     platformUrl: externalUrl,
     attachmentsUrl: externalUrl,
     notes: optionalText(5000),

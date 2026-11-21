@@ -36,11 +36,8 @@ export function ContractingFinancialSummary({
     },
   ];
   return (
-    <section
-      className="panel mb-6 p-6"
-      aria-label="Resumo Financeiro da Contratação"
-    >
-      <h2 className="font-semibold">Resumo Financeiro da Contratação</h2>
+    <section className="panel mt-6 p-6" aria-label="Resumo Financeiro">
+      <h2 className="font-semibold">Resumo Financeiro</h2>
       <div className="mt-5 grid gap-6 md:grid-cols-2">
         {summaries.map(({ title, data, description }) => (
           <section
@@ -55,15 +52,29 @@ export function ContractingFinancialSummary({
             <dl className="mt-5 space-y-3">
               {(
                 [
-                  ["acquisition", "Custo Total de Aquisição"],
-                  ["freight", "Custo Total de Frete"],
-                  ["taxes", "Valor Total de Tributos"],
-                  ["administrative", "Total de Custos Administrativos"],
-                  ["profit", "Total do Lucro Líquido"],
+                  ["acquisition", "Custo de Aquisição"],
+                  ["freight", "Custo de Frete"],
+                  ["taxes", "Total de Tributos"],
+                  ["administrative", "Custos Administrativos"],
+                  ["profit", "Lucro Líquido"],
                 ] as const
               ).map(([key, label]) => (
-                <div className="flex justify-between gap-3 text-sm" key={key}>
-                  <dt>{label}</dt>
+                <div
+                  className={`flex justify-between gap-3 text-sm ${key === "profit" && data.profit !== null ? (data.profit.startsWith("-") ? "rounded-lg border border-red-200 bg-red-50 p-3 font-semibold text-red-800" : data.profit === "0.00" ? "rounded-lg border border-slate-200 bg-slate-50 p-3 font-semibold" : "rounded-lg border border-emerald-200 bg-emerald-50 p-3 font-semibold text-emerald-800") : ""}`}
+                  key={key}
+                >
+                  <dt>
+                    {label}
+                    {key === "profit" && data.profit !== null && (
+                      <span className="sr-only">
+                        {data.profit.startsWith("-")
+                          ? " — negativo"
+                          : data.profit === "0.00"
+                            ? " — zero"
+                            : " — positivo"}
+                      </span>
+                    )}
+                  </dt>
                   <dd
                     className={
                       key === "profit" && data[key]?.startsWith("-")
@@ -76,7 +87,7 @@ export function ContractingFinancialSummary({
                 </div>
               ))}
               <div className="flex justify-between gap-3 border-t pt-3 text-sm">
-                <dt>Lucro líquido / aquisição</dt>
+                <dt>Lucro líquido / receita</dt>
                 <dd>
                   {data.profitRate === null
                     ? "Não apurável"
@@ -89,8 +100,8 @@ export function ContractingFinancialSummary({
       </div>
       <p className="mt-4 text-xs text-slate-500">
         Valores pendentes exigem custos, alíquotas ou receita ainda não
-        informados. Percentual apurado sobre o custo de aquisição; aquisição
-        zero não permite apurar percentual.
+        informados. Percentual apurado sobre a receita total; receita zero não
+        permite apurar percentual.
       </p>
     </section>
   );

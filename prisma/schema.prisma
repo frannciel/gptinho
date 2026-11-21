@@ -136,6 +136,7 @@ enum ItemType {
 }
 
 enum ContractingStatus {
+  IN_ANALYSIS
   CLASSIFIED
   CANCELLED
   SUSPENDED
@@ -155,7 +156,7 @@ model Opportunity {
   estimatedValue       Decimal?                @map("itemsEstimatedValue") @db.Decimal(18, 2)
   legacyEstimatedValue Decimal?                @map("estimatedValue") @db.Decimal(18, 2)
   proposalDeadline     DateTime?               @db.Timestamptz(3)
-  status               ContractingStatus       @default(PROPOSAL_REGISTERED) @map("contractingStatus")
+  status               ContractingStatus       @default(IN_ANALYSIS) @map("contractingStatus")
   legacyStatus         LegacyOpportunityStatus @default(OPEN) @map("status")
   platformUrl          String?
   attachmentsUrl       String?
@@ -165,6 +166,7 @@ model Opportunity {
   version              Int                     @default(1)
   createdAt            DateTime                @default(now())
   updatedAt            DateTime                @updatedAt
+  contracts            Contract[]
   items                OpportunityItem[]
 
   @@index([organizationId, processNumber])
@@ -235,4 +237,15 @@ model CatalogSupplier {
 
   @@id([catalogProductId, supplierId])
   @@index([supplierId])
+}
+
+model Contract {
+  id            String      @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  reference     String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([opportunityId, reference])
 }

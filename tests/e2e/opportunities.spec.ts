@@ -61,6 +61,11 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
   try {
     await db.$transaction(async (tx) => {
+      await tx.contract.deleteMany({
+        where: {
+          opportunity: { organizationId: { in: [agencyId].filter(Boolean) } },
+        },
+      });
       await tx.opportunityItem.deleteMany({
         where: {
           opportunityId: {
@@ -204,8 +209,10 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
   await page
     .getByLabel("Objeto")
     .fill("Aquisição de licenças de software para o órgão E2E");
+  await expect(page.getByLabel("Situação")).toHaveValue("IN_ANALYSIS");
   await page.getByLabel("Situação").selectOption("PROPOSAL_REGISTERED");
   await expect(page.getByLabel("Situação").locator("option")).toContainText([
+    "Em Análise",
     "Classificada",
     "Cancelada",
     "Suspensa",
@@ -331,8 +338,8 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
     (await db.opportunity.findUniqueOrThrow({ where: { id: op.id } })).status,
   ).toBe("PROPOSAL_REGISTERED");
   await expect(
-    page.getByRole("button", { name: "Salvar proposta do item 1" }),
-  ).toContainText("43,11%");
+    page.getByLabel("Lucro líquido do item 1", { exact: true }),
+  ).toContainText("23,93%");
   await page.getByRole("button", { name: "Salvar proposta do item 1" }).click();
   await statusDialog
     .getByRole("button", { name: "Homologada", exact: true })
@@ -362,11 +369,26 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
     .last()
     .click();
   const financial = page.getByRole("region", {
-    name: "Resumo Financeiro da Contratação",
+    name: "Resumo Financeiro",
   });
   await expect(financial).toContainText("86,21");
-  await expect(financial).toContainText("43,11%");
-  await expect(financial).toContainText("-24,90%");
+  await expect(financial).toContainText("23,93%");
+  await expect(financial).toContainText("-24,86%");
+  await expect(
+    financial
+      .locator("dl>div")
+      .filter({ hasText: /Lucro Líquido/ })
+      .nth(0),
+  ).toHaveClass(/bg-red-50/);
+  await expect(
+    financial
+      .locator("dl>div")
+      .filter({ hasText: /Lucro Líquido/ })
+      .nth(1),
+  ).toHaveClass(/bg-emerald-50/);
+  expect(
+    await financial.evaluate((element) => element.nextElementSibling === null),
+  ).toBe(true);
   await page.getByRole("button", { name: "Ocultar menu principal" }).click();
   await expect(
     page.getByRole("navigation", { name: "Navegação principal" }),
@@ -528,4 +550,100 @@ test("catálogo: ativos por padrão, filtro de inativos, mais recentes e fornece
   await expect(modal.locator('input[name="supplierIds"]')).toHaveCount(0);
   await modal.getByRole("link", { name: "Cancelar", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("exclusão de contratação confirma perda de dados e respeita contratos e arquivamento", async ({
+  page,
+  request,
+}) => {
+  const removable = await db.opportunity.create({
+    data: {
+      reference: `DEL-${suffix}`.toUpperCase(),
+      organizationId: agencyId,
+      subject: "Contratação para excluir com teste",
+      estimatedValue: "10",
+      items: {
+        create: {
+          number: 1,
+          description: "Item de exclusão",
+          unit: "UN",
+          quantity: "1",
+          unitPrice: "10",
+          total: "10",
+        },
+      },
+    },
+  });
+  const linked = await db.opportunity.create({
+    data: {
+      reference: `LINK-${suffix}`.toUpperCase(),
+      organizationId: agencyId,
+      subject: "Contratação com contrato associado",
+    },
+  });
+  await db.contract.create({
+    data: { opportunityId: linked.id, reference: "CONTRATO-E2E" },
+  });
+  const archived = await db.opportunity.create({
+    data: {
+      reference: `ARCH-${suffix}`.toUpperCase(),
+      organizationId: agencyId,
+      subject: "Contratação arquivada de teste",
+      archived: true,
+    },
+  });
+  await page.goto("/login");
+  await page.getByLabel("E-mail corporativo").fill(email);
+  await page.getByLabel("Senha", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto(`/contratacoes/${linked.id}`);
+  await expect(
+    page.getByRole("button", { name: "Excluir contratação", exact: true }),
+  ).toBeDisabled();
+  await page.goto(`/contratacoes/${archived.id}`);
+  await expect(
+    page.getByRole("button", { name: "Excluir contratação", exact: true }),
+  ).toHaveCount(0);
+  await page.goto(`/contratacoes/${removable.id}`);
+  await page
+    .getByRole("button", { name: "Excluir contratação", exact: true })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Excluir contratação",
+    exact: true,
+  });
+  await expect(dialog).toContainText("esta ação é permanente");
+  await expect(dialog).toContainText("serão perdidos");
+  await dialog.getByRole("button", { name: "Cancelar", exact: true }).click();
+  expect(
+    await db.opportunity.findUnique({ where: { id: removable.id } }),
+  ).not.toBeNull();
+  await page
+    .getByRole("button", { name: "Excluir contratação", exact: true })
+    .click();
+  const pending = page.waitForRequest(
+    (r) => r.method() === "POST" && !!r.headers()["next-action"],
+  );
+  await dialog
+    .getByRole("button", { name: "Confirmar exclusão", exact: true })
+    .click();
+  const saved = await pending;
+  await expect(page).toHaveURL(/\/contratacoes\?notice=deleted$/);
+  await expect(page.getByRole("status")).toContainText("excluída");
+  expect(
+    await db.opportunity.findUnique({ where: { id: removable.id } }),
+  ).toBeNull();
+  expect(
+    await db.opportunityItem.count({ where: { opportunityId: removable.id } }),
+  ).toBe(0);
+  const forged = await request.post(saved.url(), {
+    headers: {
+      "content-type": saved.headers()["content-type"],
+      "next-action": saved.headers()["next-action"],
+      origin: "http://localhost:3000",
+    },
+    data: saved.postData()!,
+  });
+  expect(await forged.text()).toContain("Sessão expirada");
 });

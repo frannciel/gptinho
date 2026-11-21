@@ -70,7 +70,7 @@ export async function OpportunityEditor({ id }: { id?: string }) {
         processNumber: "",
         items: [],
         proposalDeadline: "",
-        status: "PROPOSAL_REGISTERED",
+        status: "IN_ANALYSIS",
         platformUrl: "",
         attachmentsUrl: "",
         notes: "",

@@ -1,5 +1,6 @@
 import { ContractingFinancialSummary } from "@/components/contracting-financial-summary";
 import { ContractingTabs } from "@/components/contracting-tabs";
+import { DeleteOpportunity } from "@/components/delete-opportunity";
 import { ButtonContent } from "@/components/button-content";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -48,6 +49,14 @@ export default async function OpportunityDetail({
                 <Pencil size={17} />
                 Editar contratação
               </Link>
+            )}
+            {!opportunity.archived && (
+              <DeleteOpportunity
+                id={id}
+                version={opportunity.version}
+                reference={opportunity.reference}
+                hasContracts={opportunity._count.contracts > 0}
+              />
             )}
             <OpportunityArchive
               id={id}
@@ -168,7 +177,6 @@ export default async function OpportunityDetail({
           </p>
         )}
       </section>
-      <ContractingFinancialSummary items={opportunity.items} />
       <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <section className="panel p-6">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -316,6 +324,7 @@ export default async function OpportunityDetail({
           </section>
         </aside>
       </div>
+      <ContractingFinancialSummary items={opportunity.items} />
     </>
   );
 }

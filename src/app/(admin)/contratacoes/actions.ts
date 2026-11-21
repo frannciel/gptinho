@@ -72,3 +72,17 @@ export async function archiveOpportunityAction(
     return failure(error);
   }
 }
+export async function deleteOpportunityAction(
+  id: string,
+  version: number,
+): Promise<ActionResult> {
+  try {
+    const user = await requireAdmin();
+    const { deleteOpportunity } = await import("@/server/opportunities");
+    await deleteOpportunity(db, user.id, id, version);
+    refresh(id);
+    return { ok: true, message: "Contratação excluída." };
+  } catch (error) {
+    return failure(error);
+  }
+}
