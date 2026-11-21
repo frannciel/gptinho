@@ -1,5 +1,7 @@
 # Implantação, Neon e Vercel
 
+Para precificação, fornecedores múltiplos e proposta vencedora, siga [PRECIFICACAO.md](PRECIFICACAO.md) e aplique a migration correspondente antes do deploy.
+
 Para o catálogo e o gerenciamento separado de itens, siga [CATALOGO.md](CATALOGO.md). Aplique a nova migration antes do deploy.
 
 Para a atualização de Contratações e itens, siga primeiro [CONTRATACOES.md](CONTRATACOES.md). A migration preserva as colunas legadas; evite edições na transição e aplique-a antes de atualizar a Vercel.

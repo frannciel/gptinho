@@ -1,8 +1,13 @@
-import { CatalogToggle } from "@/components/catalog-toggle";
-import { ActionForm } from "@/components/action-form";
 import Link from "next/link";
+import { Prisma } from "@prisma/client";
+import { Plus, Pencil, Search } from "lucide-react";
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
+import { PageHeader } from "@/components/page-header";
+import { Modal } from "@/components/modal";
+import { ActionForm } from "@/components/action-form";
+import { SupplierMultiselect } from "@/components/supplier-multiselect";
+import { CatalogToggle } from "@/components/catalog-toggle";
 import { saveCatalogAction } from "./actions";
 export const metadata = { title: "Catálogo de itens comercializados" };
 export default async function CatalogPage({
@@ -11,161 +16,307 @@ export default async function CatalogPage({
   searchParams: Promise<Record<string, string | undefined>>;
 }) {
   await requireAdminPage();
-  const s = await searchParams;
-  const [products, suppliers, editing] = await Promise.all([
+  const raw = await searchParams;
+  const s = Object.fromEntries(
+    Object.entries(raw).map(([k, v]) => [k, typeof v === "string" ? v : ""]),
+  );
+  const where: Prisma.CatalogProductWhereInput = {
+    ...(s.q
+      ? { description: { contains: s.q.slice(0, 120), mode: "insensitive" } }
+      : {}),
+    ...(s.type === "MATERIAL" || s.type === "SERVICE" ? { type: s.type } : {}),
+    ...(s.brand ? { brand: { equals: s.brand, mode: "insensitive" } } : {}),
+    ...(s.supplierId
+      ? { suppliers: { some: { supplierId: s.supplierId } } }
+      : {}),
+  };
+  const count = await db.catalogProduct.count({ where });
+  const pages = Math.max(1, Math.ceil(count / 20));
+  const page = Math.min(
+    pages,
+    Math.max(1, Number.parseInt(s.page ?? "1", 10) || 1),
+  );
+  const [products, suppliers, brands, editing] = await Promise.all([
     db.catalogProduct.findMany({
-      where: s.q
-        ? { description: { contains: s.q.slice(0, 120), mode: "insensitive" } }
-        : {},
-      include: { supplier: true },
-      orderBy: { description: "asc" },
-      take: 100,
+      where,
+      include: { suppliers: { include: { supplier: true } } },
+      orderBy: [{ description: "asc" }, { id: "asc" }],
+      take: 20,
+      skip: (page - 1) * 20,
     }),
     db.organization.findMany({
       where: { roles: { has: "SUPPLIER" } },
       orderBy: { legalName: "asc" },
+      select: { id: true, legalName: true, active: true },
     }),
-    s.edit ? db.catalogProduct.findUnique({ where: { id: s.edit } }) : null,
+    db.catalogProduct.findMany({
+      where: { brand: { not: null } },
+      select: { brand: true },
+      distinct: ["brand"],
+      orderBy: { brand: "asc" },
+    }),
+    s.edit
+      ? db.catalogProduct.findUnique({
+          where: { id: s.edit },
+          include: { suppliers: true },
+        })
+      : null,
   ]);
+  const pageHref = (n: number) =>
+    `/catalogo?${new URLSearchParams({ q: s.q ?? "", type: s.type ?? "", brand: s.brand ?? "", supplierId: s.supplierId ?? "", page: String(n) })}`;
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-semibold">
-        Catálogo de itens comercializados
-      </h1>
-      {s.error && (
-        <p role="alert" className="text-red-700">
-          {s.error}
+    <>
+      <PageHeader
+        eyebrow="Comercial · Cadastros"
+        title="Catálogo de itens comercializados"
+        description="Produtos e serviços, características e fornecedores disponíveis."
+        action={
+          <Link href="/catalogo?new=1" className="btn">
+            <Plus size={17} />
+            Novo item
+          </Link>
+        }
+      />
+      {s.saved && (
+        <p
+          role="status"
+          className="mb-5 rounded-lg border border-brand-100 bg-brand-50 p-4 text-sm text-brand-700"
+        >
+          Item salvo.
         </p>
       )}
-      {s.saved && <p role="status">Item salvo.</p>}
-      <form className="flex gap-3">
-        <input
-          aria-label="Buscar no catálogo"
-          name="q"
-          defaultValue={s.q}
-          className="field"
-          maxLength={120}
-        />
-        <button className="btn-secondary">Buscar</button>
-        <Link href="/catalogo" className="btn-secondary">
-          Novo item
-        </Link>
-      </form>
-      <section className="panel overflow-x-auto p-5">
-        <p className="text-sm">Até 100 resultados por busca.</p>
-        <table className="w-full text-left text-sm">
-          <thead>
-            <tr>
-              {[
-                "Descrição",
-                "Marca / Modelo",
-                "Unidade",
-                "Fornecedor",
-                "Margem",
-                "Custo administrativo",
-                "",
-              ].map((t) => (
-                <th className="p-2" key={t}>
-                  {t}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((p) => (
-              <tr key={p.id}>
-                <td className="p-2">
-                  {p.description}
-                  {!p.active && " (inativo)"}
-                </td>
-                <td>
-                  {p.brand} / {p.model}
-                </td>
-                <td>{p.unit}</td>
-                <td>{p.supplier.legalName}</td>
-                <td>{p.margin.toFixed(2).replace(".", ",")}%</td>
-                <td>{p.administrativeCost.toFixed(2).replace(".", ",")}%</td>
-                <td>
-                  <Link className="underline" href={`/catalogo?edit=${p.id}`}>
-                    Editar
-                  </Link>
-                  <CatalogToggle
-                    id={p.id}
-                    version={p.version}
-                    active={p.active}
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!products.length && <p>Nenhum item encontrado.</p>}
-      </section>
-      <ActionForm
-        key={editing?.id ?? "new"}
-        action={saveCatalogAction}
-        className="panel space-y-4 p-6"
-      >
-        <h2 className="font-semibold">
-          {editing ? "Editar item" : "Novo item"}
-        </h2>
-        <input type="hidden" name="id" value={editing?.id ?? ""} />
-        <input type="hidden" name="version" value={editing?.version ?? ""} />
-        {(
-          [
-            ["description", "Descrição", true, editing?.description],
-            ["brand", "Marca", false, editing?.brand],
-            ["model", "Modelo", false, editing?.model],
-            ["unit", "Unidade", true, editing?.unit ?? "UN"],
-            ["margin", "Margem (%)", true, editing?.margin.toFixed(2)],
-            [
-              "administrativeCost",
-              "Custo Administrativo (%)",
-              true,
-              editing?.administrativeCost.toFixed(2),
-            ],
-          ] as const
-        ).map(([name, label, required, value]) => (
-          <label key={name} className="block text-sm">
-            {label}
-            {required ? " *" : ""}
+      {s.error && <p role="alert">{s.error}</p>}
+      <section className="panel overflow-hidden">
+        <form className="flex flex-wrap items-end gap-3 border-b border-slate-200 p-5">
+          <label className="min-w-48 flex-1 text-xs">
+            Buscar item
             <input
+              name="q"
               className="field mt-1"
-              name={name}
-              required={required}
-              defaultValue={value ?? ""}
-              maxLength={
-                name === "description" ? 5000 : name === "unit" ? 20 : 120
-              }
-              inputMode={
-                name === "margin" || name === "administrativeCost"
-                  ? "decimal"
-                  : "text"
-              }
+              defaultValue={s.q}
+              maxLength={120}
             />
           </label>
-        ))}
-        <label className="block text-sm">
-          Fornecedor *
-          <select
-            name="supplierId"
-            className="field mt-1"
-            required
-            defaultValue={editing?.supplierId ?? ""}
-          >
-            <option value="">Selecione</option>
-            {suppliers
-              .filter((p) => p.active || p.id === editing?.supplierId)
-              .map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.legalName}
-                  {!p.active ? " (inativo)" : ""}
+          <label className="text-xs">
+            Tipo
+            <select
+              aria-label="Tipo"
+              className="field mt-1"
+              name="type"
+              defaultValue={s.type ?? ""}
+            >
+              <option value="">Todos</option>
+              <option value="MATERIAL">Material</option>
+              <option value="SERVICE">Serviço</option>
+            </select>
+          </label>
+          <label className="text-xs">
+            Marca
+            <select
+              aria-label="Marca"
+              name="brand"
+              className="field mt-1"
+              defaultValue={s.brand ?? ""}
+            >
+              <option value="">Todas</option>
+              {brands.map((b) => (
+                <option key={b.brand} value={b.brand!}>
+                  {b.brand}
                 </option>
               ))}
-          </select>
-        </label>
-        <button className="btn">Salvar item do catálogo</button>
-      </ActionForm>
-    </div>
+            </select>
+          </label>
+          <label className="text-xs">
+            Fornecedor
+            <select
+              aria-label="Fornecedor"
+              name="supplierId"
+              className="field mt-1"
+              defaultValue={s.supplierId ?? ""}
+            >
+              <option value="">Todos</option>
+              {suppliers.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.legalName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="btn-secondary">
+            <Search size={16} />
+            Filtrar
+          </button>
+          <Link href="/catalogo" className="btn-secondary">
+            Limpar
+          </Link>
+        </form>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-slate-200 bg-slate-50 text-xs text-slate-500">
+              <tr>
+                {[
+                  "Descrição",
+                  "Tipo",
+                  "Marca / Modelo",
+                  "Unidade",
+                  "Alíquota tributária",
+                  "Fornecedores",
+                  "Ações",
+                ].map((t) => (
+                  <th className="px-5 py-3 font-medium" key={t}>
+                    {t}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {products.map((p) => (
+                <tr key={p.id} className="hover:bg-slate-50">
+                  <td className="max-w-xs px-5 py-4">
+                    <span className="line-clamp-2">{p.description}</span>
+                    {!p.active && (
+                      <span className="text-xs text-slate-500">Inativo</span>
+                    )}
+                  </td>
+                  <td className="px-5 py-4">
+                    {p.type === "MATERIAL"
+                      ? "Material"
+                      : p.type === "SERVICE"
+                        ? "Serviço"
+                        : "A definir"}
+                  </td>
+                  <td className="px-5 py-4">
+                    {p.brand ?? "—"} / {p.model ?? "—"}
+                  </td>
+                  <td className="px-5 py-4">{p.unit}</td>
+                  <td className="px-5 py-4">
+                    {p.taxRate?.toFixed(2).replace(".", ",") ?? "A definir"}
+                    {p.taxRate !== null && "%"}
+                  </td>
+                  <td className="max-w-xs px-5 py-4">
+                    {p.suppliers.map((s) => s.supplier.legalName).join(", ")}
+                  </td>
+                  <td className="px-5 py-4">
+                    <div className="flex items-center gap-2">
+                      <Link
+                        className="btn-secondary"
+                        href={`/catalogo?edit=${p.id}`}
+                        aria-label={`Editar ${p.description}`}
+                      >
+                        <Pencil size={16} />
+                      </Link>
+                      <CatalogToggle
+                        id={p.id}
+                        version={p.version}
+                        active={p.active}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!products.length && (
+            <p className="p-10 text-center text-sm text-slate-500">
+              Nenhum item encontrado.
+            </p>
+          )}
+        </div>
+        <div className="flex items-center justify-between border-t p-5 text-sm">
+          <span>
+            {count} itens · Página {page} de {pages}
+          </span>
+          <div className="flex gap-3">
+            {page > 1 && <Link href={pageHref(page - 1)}>Anterior</Link>}
+            {page < pages && <Link href={pageHref(page + 1)}>Próxima</Link>}
+          </div>
+        </div>
+      </section>
+      {(s.new || editing) && (
+        <Modal
+          title={editing ? "Editar item do catálogo" : "Novo item do catálogo"}
+          closeHref="/catalogo"
+        >
+          <ActionForm
+            key={editing?.id ?? "new"}
+            action={saveCatalogAction}
+            className="space-y-5 p-6"
+          >
+            <input type="hidden" name="id" value={editing?.id ?? ""} />
+            <input
+              type="hidden"
+              name="version"
+              value={editing?.version ?? ""}
+            />
+            <label className="block text-sm">
+              Tipo *
+              <select
+                className="field mt-1"
+                name="type"
+                defaultValue={editing?.type ?? "MATERIAL"}
+                required
+              >
+                <option value="MATERIAL">Material</option>
+                <option value="SERVICE">Serviço</option>
+              </select>
+            </label>
+            <label className="block text-sm">
+              Descrição *
+              <textarea
+                className="field mt-1"
+                name="description"
+                rows={2}
+                required
+                minLength={3}
+                maxLength={20000}
+                defaultValue={editing?.description ?? ""}
+              />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {(
+                [
+                  ["brand", "Marca", editing?.brand, false],
+                  ["model", "Modelo", editing?.model, false],
+                  ["unit", "Unidade", editing?.unit ?? "UN", true],
+                  [
+                    "taxRate",
+                    "Alíquota tributária (%)",
+                    editing?.taxRate?.toFixed(2),
+                    true,
+                  ],
+                ] as const
+              ).map(([name, label, value, required]) => (
+                <label className="block text-sm" key={name}>
+                  {label}
+                  {required && " *"}
+                  <input
+                    className="field mt-1"
+                    name={name}
+                    required={required}
+                    defaultValue={value ?? ""}
+                    maxLength={name === "unit" ? 20 : 120}
+                    inputMode={name === "taxRate" ? "decimal" : "text"}
+                  />
+                </label>
+              ))}
+            </div>
+            <SupplierMultiselect
+              initial={editing?.suppliers.map((s) => s.supplierId) ?? []}
+              options={suppliers.filter(
+                (p) =>
+                  p.active ||
+                  editing?.suppliers.some((s) => s.supplierId === p.id),
+              )}
+            />
+            <div className="flex justify-end gap-3">
+              <Link href="/catalogo" className="btn-secondary">
+                Cancelar
+              </Link>
+              <button className="btn">Salvar item do catálogo</button>
+            </div>
+          </ActionForm>
+        </Modal>
+      )}
+    </>
   );
 }

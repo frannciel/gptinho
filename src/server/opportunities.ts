@@ -68,6 +68,22 @@ export async function saveOpportunity(
             );
         }
       }
+      itemsTotal(
+        items
+          .filter(
+            (item) =>
+              item.winner ??
+              before?.items.find((old) => old.id === item.id)?.winner ??
+              false,
+          )
+          .map((item) => ({
+            quantity: item.quantity,
+            unitPrice:
+              before?.items
+                .find((old) => old.id === item.id)
+                ?.winningUnitPrice?.toFixed(4) ?? null,
+          })),
+      );
       const payload = {
         ...data,
         estimatedValue:
@@ -94,7 +110,21 @@ export async function saveOpportunity(
       const newItems: Prisma.OpportunityItemCreateManyInput[] = [];
       for (const [index, item] of items.entries()) {
         const { id: itemId, ...fields } = item;
+        const old = before?.items.find((i) => i.id === itemId);
+        const resetPricing =
+          old && item.catalogProductId !== old.catalogProductId;
         const row = {
+          ...(resetPricing
+            ? {
+                acquisitionUnit: null,
+                freightUnit: null,
+                netProfitRate: null,
+                pricingAdministrativeRate: null,
+                minimumPrice: null,
+                pricingSnapshot: Prisma.DbNull,
+                supplierId: null,
+              }
+            : {}),
           ...fields,
           quantity: new Prisma.Decimal(item.quantity),
           unitPrice:

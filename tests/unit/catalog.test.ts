@@ -12,7 +12,7 @@ describe("percentuais do catálogo", () => {
     "recusa percentual %s",
     (v) => expect(percentage.safeParse(v).success).toBe(false),
   );
-  it("exige margem, custo administrativo e fornecedor", () =>
+  it("exige tipo, alíquota tributária e fornecedores", () =>
     expect(
       catalogSchema.safeParse({
         description: "Software",

@@ -30,29 +30,30 @@ model User {
 }
 
 model Organization {
-  id              String             @id @default(cuid())
-  legalName       String
-  tradeName       String?
-  acronym         String?
-  cnpj            String?            @unique
-  uasg            String?
-  roles           OrganizationRole[]
-  email           String?
-  phone           String?
-  address         String?
-  postalCode      String?
-  city            String?
-  state           String?
-  categories      String[]           @default([])
-  notes           String?
-  active          Boolean            @default(true)
-  version         Int                @default(1)
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  contacts        Contact[]
-  opportunities   Opportunity[]
-  catalogProducts CatalogProduct[]   @relation("CatalogSupplier")
-  suppliedItems   OpportunityItem[]  @relation("ItemSupplier")
+  id                 String             @id @default(cuid())
+  legalName          String
+  tradeName          String?
+  acronym            String?
+  cnpj               String?            @unique
+  uasg               String?
+  roles              OrganizationRole[]
+  email              String?
+  phone              String?
+  address            String?
+  postalCode         String?
+  city               String?
+  state              String?
+  categories         String[]           @default([])
+  notes              String?
+  active             Boolean            @default(true)
+  version            Int                @default(1)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  contacts           Contact[]
+  opportunities      Opportunity[]
+  catalogMemberships CatalogSupplier[]
+  catalogProducts    CatalogProduct[]   @relation("CatalogSupplier")
+  suppliedItems      OpportunityItem[]  @relation("ItemSupplier")
 
   @@index([legalName])
   @@index([roles], type: Gin)
@@ -129,7 +130,13 @@ enum ProcurementMethod {
   OTHER
 }
 
+enum ItemType {
+  MATERIAL
+  SERVICE
+}
+
 enum ContractingStatus {
+  CLASSIFIED
   CANCELLED
   SUSPENDED
   HOMOLOGATED
@@ -167,35 +174,48 @@ model Opportunity {
 }
 
 model OpportunityItem {
-  id                 String          @id @default(cuid())
-  opportunityId      String
-  opportunity        Opportunity     @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  catalogProductId   String?
-  catalogProduct     CatalogProduct? @relation(fields: [catalogProductId], references: [id], onDelete: Restrict)
-  brand              String?
-  model              String?
-  margin             Decimal?        @db.Decimal(5, 2)
-  administrativeCost Decimal?        @db.Decimal(5, 2)
-  supplierId         String?
-  supplier           Organization?   @relation("ItemSupplier", fields: [supplierId], references: [id], onDelete: Restrict)
-  number             Int
-  description        String
-  unit               String          @default("UN")
-  quantity           Decimal         @db.Decimal(18, 3)
-  unitPrice          Decimal?        @db.Decimal(18, 4)
-  total              Decimal?        @db.Decimal(18, 2)
+  type                      ItemType?
+  winner                    Boolean         @default(false)
+  taxRate                   Decimal?        @db.Decimal(5, 2)
+  acquisitionUnit           Decimal?        @db.Decimal(18, 4)
+  freightUnit               Decimal?        @db.Decimal(18, 4)
+  netProfitRate             Decimal?        @db.Decimal(5, 2)
+  pricingAdministrativeRate Decimal?        @db.Decimal(5, 2)
+  minimumPrice              Decimal?        @db.Decimal(18, 4)
+  pricingSnapshot           Json?
+  winningUnitPrice          Decimal?        @db.Decimal(18, 4)
+  id                        String          @id @default(cuid())
+  opportunityId             String
+  opportunity               Opportunity     @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  catalogProductId          String?
+  catalogProduct            CatalogProduct? @relation(fields: [catalogProductId], references: [id], onDelete: Restrict)
+  brand                     String?
+  model                     String?
+  margin                    Decimal?        @db.Decimal(5, 2)
+  administrativeCost        Decimal?        @db.Decimal(5, 2)
+  supplierId                String?
+  supplier                  Organization?   @relation("ItemSupplier", fields: [supplierId], references: [id], onDelete: Restrict)
+  number                    Int
+  description               String
+  unit                      String          @default("UN")
+  quantity                  Decimal         @db.Decimal(18, 3)
+  unitPrice                 Decimal?        @db.Decimal(18, 4)
+  total                     Decimal?        @db.Decimal(18, 2)
 
   @@unique([opportunityId, number])
 }
 
 model CatalogProduct {
+  type               ItemType?
+  taxRate            Decimal?          @db.Decimal(5, 2)
+  suppliers          CatalogSupplier[]
   id                 String            @id @default(cuid())
   description        String
   brand              String?
   model              String?
   unit               String
-  margin             Decimal           @db.Decimal(5, 2)
-  administrativeCost Decimal           @db.Decimal(5, 2)
+  margin             Decimal           @default(0) @db.Decimal(5, 2)
+  administrativeCost Decimal           @default(0) @db.Decimal(5, 2)
   supplierId         String
   supplier           Organization      @relation("CatalogSupplier", fields: [supplierId], references: [id], onDelete: Restrict)
   active             Boolean           @default(true)
@@ -204,5 +224,15 @@ model CatalogProduct {
   updatedAt          DateTime          @updatedAt
   items              OpportunityItem[]
 
+  @@index([supplierId])
+}
+
+model CatalogSupplier {
+  catalogProductId String
+  catalogProduct   CatalogProduct @relation(fields: [catalogProductId], references: [id], onDelete: Cascade)
+  supplierId       String
+  supplier         Organization   @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  @@id([catalogProductId, supplierId])
   @@index([supplierId])
 }

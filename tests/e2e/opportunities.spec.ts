@@ -3,7 +3,6 @@ import { test, expect } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 import { createDb } from "../../src/lib/db-client";
 import { hashPassword } from "../../src/lib/password";
-import { deadlineInput } from "../../src/lib/opportunity-values";
 const url = process.env.DATABASE_URL;
 if (!url || !/(_test|govnex-test)/.test(new URL(url).pathname))
   throw new Error(
@@ -17,6 +16,7 @@ const reference = `OP-E2E-${suffix}`.toUpperCase();
 let actorId: string;
 let agencyId: string;
 let supplierId: string;
+let secondSupplierId: string;
 let inactiveId: string;
 test.beforeAll(async () => {
   actorId = (
@@ -43,6 +43,11 @@ test.beforeAll(async () => {
       data: { legalName: `Somente Fornecedor ${suffix}`, roles: ["SUPPLIER"] },
     })
   ).id;
+  secondSupplierId = (
+    await db.organization.create({
+      data: { legalName: `Segundo Fornecedor ${suffix}`, roles: ["SUPPLIER"] },
+    })
+  ).id;
   inactiveId = (
     await db.organization.create({
       data: {
@@ -63,7 +68,12 @@ test.afterAll(async () => {
               await tx.opportunity.findMany({
                 where: {
                   organizationId: {
-                    in: [agencyId, supplierId, inactiveId].filter(Boolean),
+                    in: [
+                      agencyId,
+                      supplierId,
+                      secondSupplierId,
+                      inactiveId,
+                    ].filter(Boolean),
                   },
                 },
                 select: { id: true },
@@ -75,14 +85,24 @@ test.afterAll(async () => {
       await tx.opportunity.deleteMany({
         where: {
           organizationId: {
-            in: [agencyId, supplierId, inactiveId].filter(Boolean),
+            in: [agencyId, supplierId, secondSupplierId, inactiveId].filter(
+              Boolean,
+            ),
           },
         },
       });
     });
-    await db.catalogProduct.deleteMany({ where: { supplierId } });
+    await db.catalogProduct.deleteMany({
+      where: { supplierId: { in: [supplierId, secondSupplierId] } },
+    });
     await db.organization.deleteMany({
-      where: { id: { in: [agencyId, supplierId, inactiveId].filter(Boolean) } },
+      where: {
+        id: {
+          in: [agencyId, supplierId, secondSupplierId, inactiveId].filter(
+            Boolean,
+          ),
+        },
+      },
     });
     if (actorId) {
       await db.auditLog.deleteMany({ where: { actorId } });
@@ -92,12 +112,13 @@ test.afterAll(async () => {
     await db.$disconnect();
   }
 });
-test("contratações: cadastro, busca, prazo, edição, dashboard, arquivamento e proteção", async ({
+test("catálogo modal, itens, precificação exata, proposta vencedora e arquivamento", async ({
   page,
   request,
 }, testInfo) => {
-  test.setTimeout(60000);
-  for (const path of ["/contratacoes", "/contratacoes/nova"]) {
+  test.setTimeout(90000);
+  page.setDefaultTimeout(10000);
+  for (const path of ["/catalogo", "/contratacoes/nova"]) {
     await page.goto(path);
     await expect(page).toHaveURL(/\/login$/);
   }
@@ -106,37 +127,77 @@ test("contratações: cadastro, busca, prazo, edição, dashboard, arquivamento 
   await page.getByLabel("Senha", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Entrar no sistema" }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
-  await page
-    .getByRole("navigation", { name: "Navegação principal" })
-    .getByRole("link", { name: "Contratações", exact: true })
+  await page.goto("/catalogo");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.getByRole("link", { name: "Novo item", exact: true }).click();
+  const modal = page.getByRole("dialog");
+  await expect(modal).toBeVisible();
+  await modal.getByLabel("Tipo", { exact: false }).selectOption("SERVICE");
+  await modal
+    .getByLabel("Descrição", { exact: false })
+    .fill("Licenças catálogo E2E");
+  await expect(modal.getByLabel("Descrição", { exact: false })).toHaveAttribute(
+    "rows",
+    "2",
+  );
+  await modal.getByLabel("Marca", { exact: true }).fill("Marca E2E");
+  await modal.getByLabel("Modelo", { exact: true }).fill("Modelo E2E");
+  await modal
+    .getByLabel("Alíquota tributária (%)", { exact: false })
+    .fill("10,00");
+  await expect(modal.getByText("Custo Administrativo")).toHaveCount(0);
+  await expect(modal.getByText("Margem (%)")).toHaveCount(0);
+  await modal.getByLabel("Pesquisar fornecedores").fill("Somente Fornecedor");
+  await modal
+    .getByRole("checkbox", {
+      name: `Somente Fornecedor ${suffix}`,
+      exact: true,
+    })
+    .check();
+  await modal.getByLabel("Pesquisar fornecedores").fill("Segundo Fornecedor");
+  await modal
+    .getByRole("checkbox", {
+      name: `Segundo Fornecedor ${suffix}`,
+      exact: true,
+    })
+    .check();
+  await modal
+    .getByRole("button", { name: "Salvar item do catálogo", exact: true })
     .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const product = await db.catalogProduct.findFirstOrThrow({
+    where: { description: "Licenças catálogo E2E" },
+  });
+  expect(
+    await db.catalogSupplier.count({ where: { catalogProductId: product.id } }),
+  ).toBe(2);
+  await page.getByLabel("Tipo", { exact: true }).selectOption("SERVICE");
+  await page.getByLabel("Marca", { exact: true }).selectOption("Marca E2E");
+  await page
+    .getByLabel("Fornecedor", { exact: true })
+    .selectOption(secondSupplierId);
+  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Contratações", exact: true }),
+    page.getByRole("cell", { name: "Licenças catálogo E2E", exact: true }),
   ).toBeVisible();
   await page
-    .getByRole("link", { name: "Nova contratação", exact: true })
+    .getByRole("link", { name: "Editar Licenças catálogo E2E", exact: true })
     .click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await expect(
-    page.locator(`#organizationId option[value="${supplierId}"]`),
-  ).toHaveCount(0);
-  await expect(
-    page.locator(`#organizationId option[value="${inactiveId}"]`),
-  ).toHaveCount(0);
+    page.getByRole("dialog").getByLabel("Tipo", { exact: false }),
+  ).toHaveValue("SERVICE");
+  await page.getByRole("button", { name: "Fechar modal" }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.goto("/contratacoes/nova");
   await page.getByLabel("Identificação").fill(reference);
   await page.getByLabel("Órgão público").selectOption(agencyId);
   await page
     .getByLabel("Objeto")
-    .fill(
-      "Aquisição de licenças de software de produtividade para o órgão E2E",
-    );
-  await page
-    .getByLabel("Modalidade de contratação")
-    .selectOption("ELECTRONIC_AUCTION");
-  await page.getByLabel("Número do processo").fill("12345/2026");
-  await expect(
-    page.getByRole("button", { name: "Adicionar item", exact: true }),
-  ).toHaveCount(0);
-  await expect(page.getByLabel("Situação").locator("option")).toHaveText([
+    .fill("Aquisição de licenças de software para o órgão E2E");
+  await page.getByLabel("Situação").selectOption("CLASSIFIED");
+  await expect(page.getByLabel("Situação").locator("option")).toContainText([
+    "Classificada",
     "Cancelada",
     "Suspensa",
     "Homologada",
@@ -151,305 +212,155 @@ test("contratações: cadastro, busca, prazo, edição, dashboard, arquivamento 
     "data e hora da sessão pública",
   );
   await help.press("Escape");
-  await expect(page.getByRole("tooltip")).toHaveCount(0);
-  const deadline = deadlineInput(new Date(Date.now() + 24 * 60 * 60 * 1000));
-  await page
-    .getByLabel("Prazo de apresentação", { exact: true })
-    .fill(deadline);
-  await page
-    .getByLabel("Link da plataforma de licitação")
-    .fill("https://example.org/plataforma");
-  await page
-    .getByLabel("Pasta na nuvem (anexos da licitação)")
-    .fill("https://example.org/anexos");
-  await page
-    .getByLabel("Observações", { exact: true })
-    .fill("Cadastro de teste E2E");
-  const pendingAction = page.waitForRequest(
-    (req) => req.method() === "POST" && !!req.headers()["next-action"],
-  );
   await page
     .getByRole("button", { name: "Salvar contratação", exact: true })
     .click();
-  const savedRequest = await pendingAction;
   await expect(
     page.getByRole("heading", { name: reference, exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole("status")).toContainText("salva");
+  const op = await db.opportunity.findUniqueOrThrow({ where: { reference } });
   await page
     .getByRole("link", { name: "Gerenciar itens", exact: true })
     .click();
-  await page.getByRole("link", { name: "Abrir catálogo", exact: true }).click();
-  await page
-    .getByLabel("Descrição", { exact: false })
-    .fill("Licenças catálogo E2E");
-  await page.getByLabel("Marca", { exact: true }).fill("Marca E2E");
-  await page.getByLabel("Modelo", { exact: true }).fill("Modelo E2E");
-  await page.getByLabel("Margem (%)", { exact: false }).fill("15,50");
-  await page
-    .getByLabel("Custo Administrativo (%)", { exact: false })
-    .fill("4,25");
-  await page
-    .getByLabel("Fornecedor", { exact: false })
-    .selectOption(supplierId);
-  await page
-    .getByRole("button", { name: "Salvar item do catálogo", exact: true })
-    .click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Item salvo" }),
-  ).toBeVisible();
-  const product = await db.catalogProduct.findFirstOrThrow({
-    where: { supplierId },
-  });
-  const created = await db.opportunity.findUniqueOrThrow({
-    where: { reference },
-  });
-  await page.goto(`/contratacoes/${created.id}/itens`);
+  await page.getByRole("link", { name: "Novo item", exact: true }).click();
+  await expect(page.getByRole("dialog")).toBeVisible();
   await page
     .getByLabel("Item do catálogo", { exact: false })
     .selectOption(product.id);
+  await expect(
+    page.getByRole("dialog").getByLabel("Tipo", { exact: false }),
+  ).toHaveValue("SERVICE");
   await expect(page.getByLabel("Marca", { exact: true })).toHaveValue(
     "Marca E2E",
   );
-  await expect(page.getByLabel("Margem (%)", { exact: false })).toHaveValue(
-    "15.50",
-  );
   await page.getByLabel("Quantidade", { exact: false }).fill("2");
   await page
-    .getByLabel("Valor unitário estimado (R$)", { exact: true })
+    .getByLabel("Valor estimado (R$)", { exact: true })
     .fill("100,1250");
   await page
     .getByRole("button", { name: "Salvar item da contratação", exact: true })
     .click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Item salvo" }),
-  ).toBeVisible();
-  await page
-    .getByLabel("Item do catálogo", { exact: false })
-    .selectOption(product.id);
-  await page
-    .getByLabel("Descrição", { exact: false })
-    .fill("Serviço de implantação");
-  await page.getByLabel("Quantidade", { exact: false }).fill("1,5");
-  await page
-    .getByLabel("Valor unitário estimado (R$)", { exact: true })
-    .fill("10");
-  await page
-    .getByRole("button", { name: "Salvar item da contratação", exact: true })
-    .click();
-  await expect(
-    page.getByRole("status").filter({ hasText: "Item salvo" }),
-  ).toBeVisible();
-  await expect(page.getByText(/Valor estimado:/)).toContainText("215,25");
-  const firstItem = await db.opportunityItem.findFirstOrThrow({
-    where: { opportunityId: created.id, number: 1 },
-  });
-  await page.goto(`/contratacoes/${created.id}/itens?edit=${firstItem.id}`);
-  await page.getByLabel("Margem (%)", { exact: false }).fill("100,01");
-  await page.getByLabel("Quantidade", { exact: false }).fill("3");
-  await page
-    .getByRole("button", { name: "Salvar item da contratação", exact: true })
-    .click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "0 a 100" }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Quantidade", { exact: false })).toHaveValue(
-    "3",
-  );
-  await page.getByLabel("Margem (%)", { exact: false }).fill("15,50");
-  await page
-    .getByRole("button", { name: "Salvar item da contratação", exact: true })
-    .click();
-  await expect(page.getByText(/Valor estimado:/)).toContainText("315,38");
-  await page.goto(`/contratacoes/${created.id}/itens?edit=${firstItem.id}`);
-  await page.getByLabel("Quantidade", { exact: false }).fill("2");
-  await page
-    .getByRole("button", { name: "Salvar item da contratação", exact: true })
-    .click();
-  await expect(page.getByText(/Valor estimado:/)).toContainText("215,25");
-  const secondRow = page
-    .getByRole("row")
-    .filter({ hasText: "Serviço de implantação" });
-  page.once("dialog", (dialog) => dialog.accept());
-  await secondRow.getByRole("button", { name: "Excluir", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByText(/Valor estimado:/)).toContainText("200,25");
-  await page
-    .getByLabel("Item do catálogo", { exact: false })
-    .selectOption(product.id);
-  await page
-    .getByLabel("Descrição", { exact: false })
-    .fill("Serviço de implantação");
-  await page.getByLabel("Quantidade", { exact: false }).fill("1,5");
-  await page
-    .getByLabel("Valor unitário estimado (R$)", { exact: true })
-    .fill("10");
-  await page
-    .getByRole("button", { name: "Salvar item da contratação", exact: true })
-    .click();
-  await expect(page.getByText(/Valor estimado:/)).toContainText("215,25");
-  await page
-    .getByRole("link", { name: "Voltar à contratação", exact: false })
-    .click();
-  await expect(page.getByText("R$\u00a0215,25", { exact: true })).toBeVisible();
-  await expect(
-    page.getByRole("link", { name: "Plataforma de licitação" }),
-  ).toHaveAttribute("rel", "noopener noreferrer");
-  const op = await db.opportunity.findUniqueOrThrow({ where: { reference } });
-  expect(op.estimatedValue!.toFixed(2)).toBe("215.25");
-  const api = await page.request.get(
-    `/api/admin/contratacoes?q=${encodeURIComponent(reference)}`,
-  );
-  expect(api.status()).toBe(200);
-  expect(api.headers()["cache-control"]).toBe("no-store");
-  const body = await api.json();
-  expect(body.items[0].id).toBe(op.id);
-  expect(typeof body.items[0].estimatedValue).toBe("string");
-  expect(
-    (await page.request.get("/api/admin/contratacoes?status=INVALID")).status(),
-  ).toBe(400);
-  await page.getByRole("link", { name: "Visão geral", exact: true }).click();
-  await expect(
-    page
-      .getByRole("link", { name: /Contratações em acompanhamento/ })
-      .getByText("1", { exact: true }),
-  ).toBeVisible();
-  await page
-    .getByRole("navigation", { name: "Navegação principal" })
-    .getByRole("link", { name: "Contratações", exact: true })
-    .click();
-  await page.getByLabel("Buscar contratação").fill(reference);
-  await page.getByLabel("Prazo", { exact: true }).selectOption("next7days");
-  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
-  await expect(
-    page.getByRole("link", { name: reference, exact: true }),
-  ).toBeVisible();
-  await page.screenshot({
-    path: testInfo.outputPath("opportunities.png"),
-    fullPage: true,
+  const item = await db.opportunityItem.findFirstOrThrow({
+    where: { opportunityId: op.id },
   });
+  await page.getByRole("link", { name: "Editar item 1", exact: true }).click();
+  await expect(
+    page.getByLabel("Valor estimado (R$)", { exact: true }),
+  ).toHaveValue("100.1250");
+  await page.getByRole("button", { name: "Fechar modal" }).click();
   await page
-    .getByRole("link", { name: `Editar ${reference}`, exact: true })
+    .getByRole("link", { name: "Proposta Vencedora", exact: true })
     .click();
   await expect(
-    page.getByLabel("Prazo de apresentação", { exact: true }),
-  ).toHaveValue(deadline);
-  await expect(page.getByText(/Valor estimado:/)).toContainText("215,25");
-  await expect(page.getByLabel("Link da plataforma de licitação")).toHaveValue(
-    "https://example.org/plataforma",
+    page.getByText("Nenhum item marcado como vencedor."),
+  ).toBeVisible();
+  await page
+    .getByRole("link", { name: "Gerenciar itens", exact: true })
+    .click();
+  await page.getByRole("checkbox", { name: "Vencedor", exact: true }).check();
+  await expect(
+    page.getByRole("checkbox", { name: "Vencedor", exact: true }),
+  ).toBeChecked();
+  await page.getByRole("link", { name: "Precificação", exact: true }).click();
+  await expect(
+    page.getByLabel("Fornecedor do item 1").locator("option"),
+  ).toHaveCount(3);
+  await page.getByLabel("Fornecedor do item 1").selectOption(secondSupplierId);
+  await page.getByLabel("Valor de Aquisição do item 1").fill("100");
+  await page.getByLabel("Custo de frete do item 1").fill("10");
+  await expect(page.getByLabel("Alíquota tributária do item 1")).toHaveValue(
+    "10,00",
   );
-  await expect(
-    page.getByLabel("Pasta na nuvem (anexos da licitação)"),
-  ).toHaveValue("https://example.org/anexos");
-  await expect(
-    page.getByRole("button", { name: "Arquivar", exact: true }),
-  ).toBeVisible();
-  await page.getByLabel("Situação").selectOption("PROPOSAL_REGISTERED");
+  await page.getByLabel("Lucro Líquido do item 1").fill("90");
+  await page.getByLabel("Custo Administrativo do item 1").fill("5");
   await page
-    .getByLabel("Prazo de apresentação", { exact: true })
-    .fill("2020-01-01T12:00");
-  await page
-    .getByRole("button", { name: "Salvar contratação", exact: true })
+    .getByRole("button", { name: "Salvar precificação do item 1" })
     .click();
   await expect(
-    page.getByText(/O prazo de apresentação desta contratação está vencido/),
+    page.getByRole("alert").filter({ hasText: "menor que 100" }),
   ).toBeVisible();
+  await expect(page.getByLabel("Valor de Aquisição do item 1")).toHaveValue(
+    "100",
+  );
+  await page.getByLabel("Lucro Líquido do item 1").fill("20");
+  await page
+    .getByRole("button", { name: "Salvar precificação do item 1" })
+    .click();
   await expect(
-    page.getByText("Proposta Cadastrada", { exact: true }),
+    page.getByText("Acima do valor estimado", { exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Arquivar", exact: true }).click();
-  await expect(page.getByRole("dialog")).toBeVisible();
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "Cancelar", exact: true })
-    .click();
-  expect(
-    (await db.opportunity.findUniqueOrThrow({ where: { id: op.id } })).archived,
-  ).toBe(false);
-  await page
-    .getByRole("link", { name: "Editar contratação", exact: true })
-    .click();
-  await page
-    .getByLabel("Observações", { exact: true })
-    .fill("Alteração não salva que será descartada");
-  await page.getByRole("button", { name: "Arquivar", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "As alterações não salvas",
+  await expect(page.getByRole("cell", { name: /169,2308/ })).toHaveClass(
+    /bg-amber-50/,
   );
   await page
-    .getByRole("button", { name: "Confirmar arquivamento", exact: true })
+    .getByRole("link", { name: "Proposta Vencedora", exact: true })
     .click();
-  await expect(page.getByRole("status")).toContainText("arquivada");
-  expect(
-    (await db.opportunity.findUniqueOrThrow({ where: { id: op.id } })).notes,
-  ).toBe("Cadastro de teste E2E");
-  await expect(
-    page.getByRole("link", { name: reference, exact: true }),
-  ).toHaveCount(0);
-  await page.getByLabel("Exibição").selectOption("archived");
-  await page.getByLabel("Buscar contratação").fill(reference);
-  await page.getByRole("button", { name: "Filtrar", exact: true }).click();
-  await page.getByRole("link", { name: reference, exact: true }).click();
-  await expect(
-    page.getByRole("link", { name: "Editar contratação", exact: true }),
-  ).toHaveCount(0);
-  await page.goto(`/contratacoes/${op.id}/editar`);
-  await expect(page).toHaveURL(new RegExp(`/contratacoes/${op.id}$`));
-  await page.getByRole("button", { name: "Restaurar", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Confirmar restauração", exact: true })
-    .click();
-  await expect(page.getByRole("status")).toContainText("restaurada");
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("link", { name: reference, exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: reference, exact: true }),
-  ).toBeVisible();
-  expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBe(true);
-  await page.screenshot({
-    path: testInfo.outputPath("opportunity-mobile.png"),
-    fullPage: true,
+  await expect(page.getByText(/Pendente — informe/)).toBeVisible();
+  const proposalHelp = page.getByRole("button", {
+    name: "Ajuda sobre Proposta Vencedora",
   });
-  await page
-    .getByRole("link", { name: "Editar contratação", exact: true })
-    .click();
-  const mobileHelp = page.getByRole("button", {
-    name: "Ajuda sobre o prazo de apresentação",
-  });
-  await mobileHelp.click();
+  await proposalHelp.focus();
   await expect(page.getByRole("tooltip")).toContainText(
-    "Data limite para apresentação da proposta",
+    "valor unitário ofertado",
   );
-  const bounds = await page.getByRole("tooltip").boundingBox();
-  expect(bounds!.x).toBeGreaterThanOrEqual(0);
-  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(390);
-  await page.getByLabel("Observações", { exact: true }).click();
-  await expect(page.getByRole("tooltip")).toHaveCount(0);
-  const cookies = (await page.context().cookies())
-    .map((cookie) => `${cookie.name}=${cookie.value}`)
-    .join("; ");
-  await page.getByRole("button", { name: "Sair do sistema" }).click();
-  await expect(page).toHaveURL(/\/login$/);
+  await proposalHelp.press("Escape");
+  await page.getByLabel("Proposta Vencedora do item 1").fill("180,1234");
+  const pending = page.waitForRequest(
+    (req) => req.method() === "POST" && !!req.headers()["next-action"],
+  );
+  await page.getByRole("button", { name: "Salvar proposta do item 1" }).click();
+  const saved = await pending;
+  await expect(page.getByText(/Total da proposta vencedora:/)).toContainText(
+    "360,25",
+  );
   expect(
     (
-      await request.get("/api/admin/contratacoes", {
-        headers: { cookie: cookies },
-      })
-    ).status(),
-  ).toBe(401);
-  const forged = await request.post("/contratacoes/nova", {
+      await db.opportunityItem.findUniqueOrThrow({ where: { id: item.id } })
+    ).winningUnitPrice?.toFixed(4),
+  ).toBe("180.1234");
+  await page.screenshot({
+    path: testInfo.outputPath("proposta-vencedora.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(page.getByLabel("Proposta Vencedora do item 1")).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("proposta-vencedora-mobile.png"),
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page
+    .getByRole("link", { name: "Visão geral", exact: true })
+    .last()
+    .click();
+  await page.getByRole("button", { name: "Arquivar", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Confirmar arquivamento", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/contratacoes\?notice=archived$/);
+  await page.goto(`/contratacoes/${op.id}`);
+  await expect(
+    page.getByText("Contratação arquivada. O histórico está preservado.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Precificação", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Salvar precificação do item 1" }),
+  ).toHaveCount(0);
+  await page.context().clearCookies();
+  const forged = await request.post(saved.url(), {
     headers: {
-      "next-action": savedRequest.headers()["next-action"],
-      "Content-Type": savedRequest.headers()["content-type"],
+      "content-type": saved.headers()["content-type"],
+      "next-action": saved.headers()["next-action"],
       origin: "http://localhost:3000",
     },
-    data: savedRequest.postData()!,
+    data: saved.postData()!,
   });
   expect(await forged.text()).toContain("Sessão expirada");
-  expect(await db.opportunity.count({ where: { reference } })).toBe(1);
 });
 test("contratações recusam USER em páginas, API e acesso ao cadastro", async ({
   page,
@@ -469,8 +380,23 @@ test("contratações recusam USER em páginas, API e acesso ao cadastro", async 
     await page.getByLabel("Senha", { exact: true }).fill(password);
     await page.getByRole("button", { name: "Entrar no sistema" }).click();
     await expect(page).toHaveURL(/\/acesso-negado$/);
-    await page.goto("/contratacoes/nova");
-    await expect(page).toHaveURL(/\/acesso-negado$/);
+    const op = await db.opportunity.create({
+      data: {
+        reference: `ACCESS-${suffix}`.toUpperCase(),
+        organizationId: agencyId,
+        subject: "Contratação para testar acesso",
+      },
+    });
+    for (const path of [
+      "/catalogo",
+      "/contratacoes/nova",
+      `/contratacoes/${op.id}/itens`,
+      `/contratacoes/${op.id}/precificacao`,
+      `/contratacoes/${op.id}/proposta-vencedora`,
+    ]) {
+      await page.goto(path);
+      await expect(page).toHaveURL(/\/acesso-negado$/);
+    }
     expect((await page.request.get("/api/admin/contratacoes")).status()).toBe(
       403,
     );

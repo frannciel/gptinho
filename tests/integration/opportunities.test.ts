@@ -11,6 +11,11 @@ import {
   getOpportunityStats,
   getOpportunityDetail,
 } from "@/server/opportunities";
+import {
+  saveItemPricing,
+  setItemWinner,
+  saveWinningPrice,
+} from "@/server/pricing";
 import { saveCatalog } from "@/server/catalog";
 import { itemInput, headerInput } from "@/server/item-input";
 import { saveOrganization, deleteOrganization } from "@/server/organizations";
@@ -630,9 +635,9 @@ describe.sequential("Catálogo e snapshots dos itens", () => {
     brand: "Marca original",
     model: "Modelo original",
     unit: "LIC",
-    margin: "15,50",
-    administrativeCost: "3,25",
-    supplierId,
+    type: "SERVICE",
+    taxRate: "15,50",
+    supplierIds: [supplierId],
   });
   it("copia o catálogo e preserva o snapshot após alterar o produto", async () => {
     const product = await saveCatalog(db, actorId, productInput());
@@ -646,8 +651,8 @@ describe.sequential("Catálogo e snapshots dos itens", () => {
           catalogProductId: product.id,
           brand: product.brand ?? "",
           model: product.model ?? "",
-          margin: product.margin.toFixed(2),
-          administrativeCost: product.administrativeCost.toFixed(2),
+          type: product.type,
+          taxRate: product.taxRate!.toFixed(2),
           supplierId,
         },
       ],
@@ -655,7 +660,7 @@ describe.sequential("Catálogo e snapshots dos itens", () => {
     await saveCatalog(
       db,
       actorId,
-      { ...productInput(), brand: "Outra marca", margin: "25" },
+      { ...productInput(), brand: "Outra marca", taxRate: "25" },
       product.id,
       product.version,
     );
@@ -663,8 +668,7 @@ describe.sequential("Catálogo e snapshots dos itens", () => {
       where: { opportunityId: op.id },
     });
     expect(item.brand).toBe("Marca original");
-    expect(item.margin?.toFixed(2)).toBe("15.50");
-    expect(item.administrativeCost?.toFixed(2)).toBe("3.25");
+    expect(item.taxRate?.toFixed(2)).toBe("15.50");
     expect(item.supplierId).toBe(supplierId);
     const edited = await saveOpportunity(
       db,
@@ -687,13 +691,13 @@ describe.sequential("Catálogo e snapshots dos itens", () => {
   });
   it("recusa órgão como fornecedor e edição concorrente no catálogo", async () => {
     await expect(
-      saveCatalog(db, actorId, { ...productInput(), supplierId: agencyId }),
+      saveCatalog(db, actorId, { ...productInput(), supplierIds: [agencyId] }),
     ).rejects.toThrow("fornecedor");
     const p = await saveCatalog(db, actorId, productInput());
     await saveCatalog(
       db,
       actorId,
-      { ...productInput(), margin: "20" },
+      { ...productInput(), taxRate: "20" },
       p.id,
       p.version,
     );
@@ -708,13 +712,180 @@ describe.sequential("Catálogo e snapshots dos itens", () => {
     await expect(
       db.catalogProduct.create({
         data: {
-          ...productInput(),
-          brand: null,
-          model: null,
-          margin: "100.01",
-          administrativeCost: "0",
+          description: "Invalid tax",
+          unit: "UN",
+          supplierId,
+          taxRate: "100.01",
         },
       }),
     ).rejects.toThrow();
+  });
+});
+
+describe.sequential("Precificação e proposta vencedora", () => {
+  const setup = async () => {
+    const product = await saveCatalog(db, actorId, {
+      description: "Produto precificado",
+      brand: "Marca",
+      model: "",
+      unit: "UN",
+      type: "MATERIAL",
+      taxRate: "10",
+      supplierIds: [supplierId],
+    });
+    const op = await saveOpportunity(db, actorId, {
+      ...base(),
+      items: [
+        {
+          ...base().items[0],
+          catalogProductId: product.id,
+          type: "MATERIAL",
+          taxRate: "10",
+          unitPrice: "100.0000",
+          quantity: "2",
+        },
+      ],
+    });
+    return { product, op, item: op.items[0] };
+  };
+  const pricing = () => ({
+    supplierId,
+    acquisitionUnit: "100",
+    freightUnit: "10",
+    taxRate: "10",
+    netProfitRate: "20",
+    pricingAdministrativeRate: "5",
+  });
+  it("calcula no backend, salva snapshot e aceita preço acima da referência", async () => {
+    const { op, item } = await setup();
+    const result = await saveItemPricing(
+      db,
+      actorId,
+      op.id,
+      item.id,
+      op.version,
+      pricing(),
+    );
+    expect(result.minimumPrice?.toFixed(4)).toBe("169.2308");
+    expect(result.pricingSnapshot).toMatchObject({
+      formulaVersion: "1",
+      acquisitionUnit: "100.0000",
+      taxRate: "10.00",
+      rounding: "HALF_UP",
+      minimumPrice: "169.2308",
+    });
+    expect(
+      await db.auditLog.count({ where: { entityId: op.id, action: "PRICE" } }),
+    ).toBe(1);
+  });
+  it("recusa fornecedor fora da lista, denominador inválido e versão antiga", async () => {
+    const { op, item } = await setup();
+    await expect(
+      saveItemPricing(db, actorId, op.id, item.id, op.version, {
+        ...pricing(),
+        supplierId: agencyId,
+      }),
+    ).rejects.toThrow("fornecedor");
+    await expect(
+      saveItemPricing(db, actorId, op.id, item.id, op.version, {
+        ...pricing(),
+        netProfitRate: "90",
+      }),
+    ).rejects.toThrow();
+    await saveItemPricing(db, actorId, op.id, item.id, op.version, pricing());
+    await expect(
+      setItemWinner(db, actorId, op.id, item.id, op.version, true),
+    ).rejects.toThrow("alterada");
+  });
+  it("marca vencedor, valida pertencimento e preserva quatro casas na oferta", async () => {
+    const { op, item } = await setup();
+    await expect(
+      saveWinningPrice(db, actorId, op.id, item.id, op.version, "80.1234"),
+    ).rejects.toThrow("vencedor");
+    await setItemWinner(db, actorId, op.id, item.id, op.version, true);
+    const parent = await db.opportunity.findUniqueOrThrow({
+      where: { id: op.id },
+    });
+    const result = await saveWinningPrice(
+      db,
+      actorId,
+      op.id,
+      item.id,
+      parent.version,
+      "80,1234",
+    );
+    expect(result.winningUnitPrice?.toFixed(4)).toBe("80.1234");
+    const other = await saveOpportunity(db, actorId, {
+      ...base(),
+      reference: "OUTRA",
+    });
+    await expect(
+      saveWinningPrice(db, actorId, other.id, item.id, other.version, "1"),
+    ).rejects.toThrow("não encontrado");
+  });
+  it("não permite precificar ou alterar vencedores de contratação arquivada", async () => {
+    const { op, item } = await setup();
+    await archiveOpportunity(db, actorId, op.id, op.version, true);
+    await expect(
+      saveItemPricing(db, actorId, op.id, item.id, op.version + 1, pricing()),
+    ).rejects.toThrow("indisponível");
+    await expect(
+      setItemWinner(db, actorId, op.id, item.id, op.version + 1, true),
+    ).rejects.toThrow("indisponível");
+  });
+  it("mantém o histórico ao recalcular e o banco rejeita preço calculado adulterado", async () => {
+    const { op, item } = await setup();
+    await saveItemPricing(db, actorId, op.id, item.id, op.version, pricing());
+    await expect(
+      db.opportunityItem.update({
+        where: { id: item.id },
+        data: { minimumPrice: "1" },
+      }),
+    ).rejects.toThrow();
+    await saveItemPricing(db, actorId, op.id, item.id, op.version + 1, {
+      ...pricing(),
+      acquisitionUnit: "50",
+    });
+    const history = await db.auditLog.findMany({
+      where: { entityId: op.id, action: "PRICE" },
+      orderBy: { createdAt: "asc" },
+    });
+    expect(history).toHaveLength(2);
+    expect(JSON.stringify(history[0].changes)).toContain("169.2308");
+  });
+  it("recusa soma de vencedores acima da precisão suportada ao remarcar itens", async () => {
+    const op = await saveOpportunity(db, actorId, {
+      ...base(),
+      items: [
+        { ...base().items[0], number: "1", quantity: "60", unitPrice: "0" },
+        { ...base().items[0], number: "2", quantity: "60", unitPrice: "0" },
+      ],
+    });
+    await db.opportunityItem.updateMany({
+      where: { opportunityId: op.id },
+      data: { winningUnitPrice: "90000000000000.0000" },
+    });
+    await setItemWinner(db, actorId, op.id, op.items[0].id, op.version, true);
+    await expect(
+      setItemWinner(db, actorId, op.id, op.items[1].id, op.version + 1, true),
+    ).rejects.toThrow("limite");
+    expect(
+      (
+        await db.opportunityItem.findUniqueOrThrow({
+          where: { id: op.items[1].id },
+        })
+      ).winner,
+    ).toBe(false);
+  });
+  it("salva Classificada sem alerta de prazo vencido", async () => {
+    const op = await saveOpportunity(db, actorId, {
+      ...base(),
+      status: "CLASSIFIED",
+      proposalDeadline: "2020-01-01T12:00",
+    });
+    expect(op.status).toBe("CLASSIFIED");
+    const stats = await getOpportunityStats(db);
+    expect(stats.open).toBe(1);
+    expect(stats.overdue).toBe(0);
   });
 });

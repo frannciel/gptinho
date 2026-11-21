@@ -74,7 +74,7 @@ export async function saveOrganization(
     if (
       id &&
       !data.roles.includes("SUPPLIER") &&
-      ((await tx.catalogProduct.count({ where: { supplierId: id } })) ||
+      ((await tx.catalogSupplier.count({ where: { supplierId: id } })) ||
         (await tx.opportunityItem.count({ where: { supplierId: id } })))
     )
       throw new BusinessError(

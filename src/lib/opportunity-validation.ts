@@ -50,6 +50,9 @@ export const opportunitySchema = z
         z
           .object({
             id: idSchema.optional(),
+            type: z.enum(["MATERIAL", "SERVICE"]).nullable().optional(),
+            taxRate: percentage.nullable().optional(),
+            winner: z.boolean().optional(),
             catalogProductId: idSchema.nullable().optional(),
             brand: optionalText(120).optional(),
             model: optionalText(120).optional(),
@@ -68,7 +71,7 @@ export const opportunitySchema = z
               .string()
               .trim()
               .min(3, "Descreva o item com pelo menos 3 caracteres.")
-              .max(5000),
+              .max(20000),
             unit: z
               .string()
               .trim()

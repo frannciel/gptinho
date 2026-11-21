@@ -100,3 +100,50 @@ it("converte as situações solicitadas preservando valores, links, arquivos e h
     await client.query(`DROP SCHEMA "${schema}" CASCADE`);
   }
 });
+it("migra catálogo sem transformar margem em tributo e preserva fornecedores", async () => {
+  const schema = `pricing_${randomUUID().replaceAll("-", "")}`;
+  await client.query(`CREATE SCHEMA "${schema}"`);
+  try {
+    await client.query(`SET search_path TO "${schema}"`);
+    for (const path of [
+      "20261118000100_foundation",
+      "20261119000100_cadastros_enderecos_contatos",
+      "20261119000200_opportunities",
+      "20261120000100_contracting_items",
+      "20261120000200_product_catalog",
+    ])
+      await client.query(
+        readFileSync(`prisma/migrations/${path}/migration.sql`, "utf8"),
+      );
+    await client.query(
+      `INSERT INTO "Organization" (id,"legalName",roles,"updatedAt") VALUES ('supplier','Fornecedor legado',ARRAY['SUPPLIER']::"OrganizationRole"[],NOW())`,
+    );
+    await client.query(
+      `INSERT INTO "CatalogProduct" (id,description,unit,margin,"administrativeCost","supplierId","updatedAt") VALUES ('product','Produto legado','UN',15.5,3.25,'supplier',NOW())`,
+    );
+    await client.query(
+      readFileSync(
+        "prisma/migrations/20261120000300_pricing_winners/migration.sql",
+        "utf8",
+      ),
+    );
+    const row = (
+      await client.query(
+        `SELECT margin::text,"administrativeCost"::text,"taxRate",type FROM "CatalogProduct"`,
+      )
+    ).rows[0];
+    expect(row).toEqual({
+      margin: "15.50",
+      administrativeCost: "3.25",
+      taxRate: null,
+      type: null,
+    });
+    expect(
+      (await client.query(`SELECT * FROM "CatalogSupplier"`)).rows,
+    ).toEqual([{ catalogProductId: "product", supplierId: "supplier" }]);
+  } finally {
+    await client.query("ROLLBACK");
+    await client.query("SET search_path TO public");
+    await client.query(`DROP SCHEMA "${schema}" CASCADE`);
+  }
+});

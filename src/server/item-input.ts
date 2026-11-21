@@ -3,6 +3,9 @@ import { deadlineInput } from "@/lib/opportunity-values";
 export function itemInput(i: OpportunityItem) {
   return {
     id: i.id,
+    type: i.type,
+    taxRate: i.taxRate?.toFixed(2) ?? null,
+    winner: i.winner,
     number: String(i.number),
     description: i.description,
     unit: i.unit,
