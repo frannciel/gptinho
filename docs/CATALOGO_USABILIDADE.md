@@ -1,5 +1,7 @@
 # Catálogo, ordenação e padrão de ações
 
+Os ajustes posteriores de filtros, resumo financeiro e situação da proposta estão em [RESUMO_FINANCEIRO.md](RESUMO_FINANCEIRO.md).
+
 ## Alterações
 
 - O catálogo exibe somente itens ativos por padrão. O filtro Situação permite consultar Ativo ou Inativo e é preservado na paginação.

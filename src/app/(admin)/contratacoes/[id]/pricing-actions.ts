@@ -9,6 +9,7 @@ import {
   saveWinningPrice,
   setItemWinner,
 } from "@/server/pricing";
+import { z } from "zod";
 import { idSchema } from "@/lib/validation";
 export async function pricingAction(form: FormData) {
   const id = idSchema.parse(form.get("opportunityId"));
@@ -34,6 +35,10 @@ export async function pricingAction(form: FormData) {
         itemId,
         version,
         String(form.get("winningUnitPrice") ?? ""),
+        z
+          .enum(["CLASSIFIED", "HOMOLOGATED"])
+          .optional()
+          .parse(form.get("nextStatus") || undefined),
       );
     else
       await saveItemPricing(

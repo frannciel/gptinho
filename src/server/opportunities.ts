@@ -347,7 +347,7 @@ export async function getOpportunityDetail(db: PrismaClient, id: string) {
       where: { entity: "Opportunity", entityId: id },
       include: { actor: { select: { name: true } } },
       orderBy: [{ createdAt: "desc" }, { id: "desc" }],
-      take: 10,
+      take: 5,
     }),
   ]);
   return { opportunity, duplicates, history };

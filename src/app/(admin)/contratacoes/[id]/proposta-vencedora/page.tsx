@@ -1,4 +1,5 @@
-import { ButtonContent } from "@/components/button-content";
+import { WinningOfferForm } from "@/components/winning-offer-form";
+import { financialItem } from "@/components/contracting-financial-summary";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireAdminPage } from "@/lib/authorization";
@@ -9,8 +10,6 @@ import { ContractingTabs } from "@/components/contracting-tabs";
 import { PageHeader } from "@/components/page-header";
 import { HelpTooltip } from "@/components/help-tooltip";
 import { WinningPriceInput } from "@/components/winning-price-input";
-import { ActionForm } from "@/components/action-form";
-import { pricingAction } from "../pricing-actions";
 export default async function WinnersPage({
   params,
   searchParams,
@@ -93,6 +92,7 @@ export default async function WinnersPage({
                   </td>
                   <td className="px-4 py-4">
                     <WinningPriceInput
+                      item={financialItem(i)}
                       formId={formId}
                       number={i.number}
                       value={i.winningUnitPrice?.toFixed(4) ?? null}
@@ -106,22 +106,14 @@ export default async function WinnersPage({
                   </td>
                   <td className="px-4 py-4">
                     {!p.archived && (
-                      <ActionForm id={formId} action={pricingAction}>
-                        <input
-                          type="hidden"
-                          name="operation"
-                          value="winningPrice"
-                        />
-                        <input type="hidden" name="opportunityId" value={id} />
-                        <input type="hidden" name="itemId" value={i.id} />
-                        <input type="hidden" name="version" value={p.version} />
-                        <button
-                          className="btn"
-                          aria-label={`Salvar proposta do item ${i.number}`}
-                        >
-                          <ButtonContent action="save" />
-                        </button>
-                      </ActionForm>
+                      <WinningOfferForm
+                        formId={formId}
+                        id={id}
+                        itemId={i.id}
+                        number={i.number}
+                        version={p.version}
+                        status={p.status}
+                      />
                     )}
                   </td>
                 </tr>

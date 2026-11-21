@@ -1,5 +1,7 @@
 # Catálogo, precificação e proposta vencedora
 
+Os ajustes posteriores de filtros, resumo financeiro e situação da proposta estão em [RESUMO_FINANCEIRO.md](RESUMO_FINANCEIRO.md).
+
 Esta entrega atende aos pedidos posteriores à primeira versão do catálogo. As orientações deste documento substituem as descrições anteriores de Margem e Custo Administrativo nos formulários de catálogo e itens.
 
 ## Catálogo

@@ -25,10 +25,13 @@ export default async function CatalogPage({
   const where: Prisma.CatalogProductWhereInput = {
     active: status === "active",
     ...(s.q
-      ? { description: { contains: s.q.slice(0, 120), mode: "insensitive" } }
+      ? {
+          OR: ["description", "brand", "model"].map((field) => ({
+            [field]: { contains: s.q.slice(0, 120), mode: "insensitive" },
+          })),
+        }
       : {}),
     ...(s.type === "MATERIAL" || s.type === "SERVICE" ? { type: s.type } : {}),
-    ...(s.brand ? { brand: { equals: s.brand, mode: "insensitive" } } : {}),
     ...(s.supplierId
       ? { suppliers: { some: { supplierId: s.supplierId } } }
       : {}),
@@ -39,7 +42,7 @@ export default async function CatalogPage({
     pages,
     Math.max(1, Number.parseInt(s.page ?? "1", 10) || 1),
   );
-  const [products, supplierFilter, brands, editing] = await Promise.all([
+  const [products, suppliers, editing] = await Promise.all([
     db.catalogProduct.findMany({
       where,
       include: { suppliers: { include: { supplier: true } } },
@@ -47,17 +50,10 @@ export default async function CatalogPage({
       take: 20,
       skip: (page - 1) * 20,
     }),
-    s.supplierId
-      ? db.organization.findUnique({
-          where: { id: s.supplierId },
-          select: { id: true, legalName: true, active: true },
-        })
-      : null,
-    db.catalogProduct.findMany({
-      where: { brand: { not: null } },
-      select: { brand: true },
-      distinct: ["brand"],
-      orderBy: { brand: "asc" },
+    db.organization.findMany({
+      where: { roles: { has: "SUPPLIER" } },
+      select: { id: true, legalName: true, active: true },
+      orderBy: { legalName: "asc" },
     }),
     s.edit
       ? db.catalogProduct.findUnique({
@@ -75,7 +71,7 @@ export default async function CatalogPage({
       : null,
   ]);
   const pageHref = (n: number) =>
-    `/catalogo?${new URLSearchParams({ q: s.q ?? "", type: s.type ?? "", brand: s.brand ?? "", supplierId: s.supplierId ?? "", status, page: String(n) })}`;
+    `/catalogo?${new URLSearchParams({ q: s.q ?? "", type: s.type ?? "", supplierId: s.supplierId ?? "", status, page: String(n) })}`;
   return (
     <>
       <PageHeader
@@ -112,6 +108,7 @@ export default async function CatalogPage({
           <label className="min-w-48 flex-1 text-xs">
             Buscar item
             <input
+              placeholder="Buscar por descrição, marca ou modelo"
               name="q"
               className="field mt-1"
               defaultValue={s.q}
@@ -131,31 +128,24 @@ export default async function CatalogPage({
               <option value="SERVICE">Serviço</option>
             </select>
           </label>
-          <label className="text-xs">
-            Marca
+          <label className="text-xs" htmlFor="catalog-supplier-filter">
+            Fornecedor
             <select
-              aria-label="Marca"
-              name="brand"
               className="field mt-1"
-              defaultValue={s.brand ?? ""}
+              id="catalog-supplier-filter"
+              aria-label="Fornecedor"
+              name="supplierId"
+              defaultValue={s.supplierId ?? ""}
             >
-              <option value="">Todas</option>
-              {brands.map((b) => (
-                <option key={b.brand} value={b.brand!}>
-                  {b.brand}
+              <option value="">Todos os fornecedores</option>
+              {suppliers.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.legalName}
+                  {!s.active ? " (inativo)" : ""}
                 </option>
               ))}
             </select>
           </label>
-          <div className="min-w-64 max-w-sm">
-            <SupplierMultiselect
-              key={s.supplierId ?? "filter"}
-              multiple={false}
-              name="supplierId"
-              includeInactive
-              initial={supplierFilter ? [supplierFilter] : []}
-            />
-          </div>
           <label className="text-xs">
             Situação
             <select

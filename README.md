@@ -158,3 +158,5 @@ O catálogo de itens comercializados e a tela específica de itens da contrataç
 A entrega de [precificação e proposta vencedora](docs/PRECIFICACAO.md) acrescenta os novos modais, filtros e fornecedores múltiplos ao catálogo.
 
 Os ajustes de [catálogo, filtros e padrão de ações](docs/CATALOGO_USABILIDADE.md) definem a consulta de ativos/inativos, fornecedores pesquisáveis e a ordenação por criação.
+
+A entrega de [resumo financeiro e controle da proposta vencedora](docs/RESUMO_FINANCEIRO.md) documenta as bases confirmadas de cálculo e os ajustes mais recentes da interface.
