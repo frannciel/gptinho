@@ -177,14 +177,14 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
     await db.catalogSupplier.count({ where: { catalogProductId: product.id } }),
   ).toBe(2);
   await page.getByLabel("Tipo", { exact: true }).selectOption("SERVICE");
-  await page.getByLabel("Marca", { exact: true }).selectOption("Marca E2E");
+  await expect(page.getByLabel("Buscar item", { exact: true })).toHaveAttribute(
+    "placeholder",
+    "Buscar por descrição, marca ou modelo",
+  );
+  await page.getByLabel("Buscar item", { exact: true }).fill("Modelo E2E");
   await page
-    .getByLabel("Pesquisar fornecedor", { exact: true })
-    .fill("Segundo Fornecedor");
-  await page
-    .getByRole("listbox", { name: "Resultados de fornecedores" })
-    .getByRole("option", { name: `Segundo Fornecedor ${suffix}`, exact: true })
-    .click();
+    .getByLabel("Fornecedor", { exact: true })
+    .selectOption(secondSupplierId);
   await page.getByRole("button", { name: "Filtrar", exact: true }).click();
   await expect(
     page.getByRole("cell", { name: "Licenças catálogo E2E", exact: true }),
@@ -204,7 +204,7 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
   await page
     .getByLabel("Objeto")
     .fill("Aquisição de licenças de software para o órgão E2E");
-  await page.getByLabel("Situação").selectOption("CLASSIFIED");
+  await page.getByLabel("Situação").selectOption("PROPOSAL_REGISTERED");
   await expect(page.getByLabel("Situação").locator("option")).toContainText([
     "Classificada",
     "Cancelada",
@@ -250,7 +250,7 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
     .getByRole("button", { name: "Salvar item da contratação", exact: true })
     .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page.getByText(/Valor estimado:/)).toContainText("200,25");
+  await expect(page.getByText(/Valor Total Estimado:/)).toContainText("200,25");
   const item = await db.opportunityItem.findFirstOrThrow({
     where: { opportunityId: op.id },
   });
@@ -320,6 +320,23 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
     (req) => req.method() === "POST" && !!req.headers()["next-action"],
   );
   await page.getByRole("button", { name: "Salvar proposta do item 1" }).click();
+  const statusDialog = page.getByRole("dialog", {
+    name: "Atualizar situação para registrar proposta do item 1",
+  });
+  await expect(statusDialog).toBeVisible();
+  await statusDialog
+    .getByRole("button", { name: "Cancelar", exact: true })
+    .click();
+  expect(
+    (await db.opportunity.findUniqueOrThrow({ where: { id: op.id } })).status,
+  ).toBe("PROPOSAL_REGISTERED");
+  await expect(
+    page.getByRole("button", { name: "Salvar proposta do item 1" }),
+  ).toContainText("43,11%");
+  await page.getByRole("button", { name: "Salvar proposta do item 1" }).click();
+  await statusDialog
+    .getByRole("button", { name: "Homologada", exact: true })
+    .click();
   const saved = await pending;
   await expect(page.getByText(/Total da proposta vencedora:/)).toContainText(
     "360,25",
@@ -344,6 +361,20 @@ test("catálogo modal, itens, precificação exata, proposta vencedora e arquiva
     .getByRole("link", { name: "Visão geral", exact: true })
     .last()
     .click();
+  const financial = page.getByRole("region", {
+    name: "Resumo Financeiro da Contratação",
+  });
+  await expect(financial).toContainText("86,21");
+  await expect(financial).toContainText("43,11%");
+  await expect(financial).toContainText("-24,90%");
+  await page.getByRole("button", { name: "Ocultar menu principal" }).click();
+  await expect(
+    page.getByRole("navigation", { name: "Navegação principal" }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Exibir menu principal" }).click();
+  await expect(
+    page.getByRole("navigation", { name: "Navegação principal" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Arquivar", exact: true }).click();
   await page
     .getByRole("dialog")

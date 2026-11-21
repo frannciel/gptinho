@@ -16,6 +16,7 @@ async function changeItem(
   version: number,
   operation: "PRICE" | "WINNER" | "WINNING_PRICE",
   value: unknown,
+  nextStatus?: "CLASSIFIED" | "HOMOLOGATED",
 ) {
   idSchema.parse(id);
   idSchema.parse(itemId);
@@ -31,6 +32,7 @@ async function changeItem(
       if (!before)
         throw new BusinessError("Item não encontrado nesta contratação.");
       let data: Prisma.OpportunityItemUpdateInput;
+      let statusChange: "CLASSIFIED" | "HOMOLOGATED" | undefined;
       if (operation === "PRICE") {
         const input = pricingSchema.parse(value);
         if (!before.catalogProductId)
@@ -93,6 +95,17 @@ async function changeItem(
           throw new BusinessError(
             "Marque o item como vencedor antes de registrar a proposta.",
           );
+        const selectedStatus = z
+          .enum(["CLASSIFIED", "HOMOLOGATED"])
+          .optional()
+          .parse(nextStatus);
+        if (parent.status !== "CLASSIFIED" && parent.status !== "HOMOLOGATED") {
+          if (!selectedStatus)
+            throw new BusinessError(
+              "Atualize a situação para Classificada ou Homologada antes de salvar a proposta vencedora.",
+            );
+          statusChange = selectedStatus;
+        }
         const price = monetary4.parse(value);
         const winners = await tx.opportunityItem.findMany({
           where: { opportunityId: id, winner: true },
@@ -110,7 +123,10 @@ async function changeItem(
       }
       const updated = await tx.opportunity.updateMany({
         where: { id, version, archived: false },
-        data: { version: { increment: 1 } },
+        data: {
+          version: { increment: 1 },
+          ...(statusChange ? { status: statusChange } : {}),
+        },
       });
       if (!updated.count)
         throw new BusinessError(
@@ -126,7 +142,14 @@ async function changeItem(
           entity: "Opportunity",
           entityId: id,
           action: operation,
-          changes: JSON.parse(JSON.stringify({ before, after })),
+          changes: JSON.parse(
+            JSON.stringify({
+              before,
+              after,
+              beforeStatus: parent.status,
+              afterStatus: statusChange ?? parent.status,
+            }),
+          ),
         },
       });
       return after;
@@ -157,4 +180,15 @@ export const saveWinningPrice = (
   itemId: string,
   version: number,
   price: unknown,
-) => changeItem(db, actorId, id, itemId, version, "WINNING_PRICE", price);
+  nextStatus?: "CLASSIFIED" | "HOMOLOGATED",
+) =>
+  changeItem(
+    db,
+    actorId,
+    id,
+    itemId,
+    version,
+    "WINNING_PRICE",
+    price,
+    nextStatus,
+  );

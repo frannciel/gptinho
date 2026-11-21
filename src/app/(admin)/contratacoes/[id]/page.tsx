@@ -1,3 +1,4 @@
+import { ContractingFinancialSummary } from "@/components/contracting-financial-summary";
 import { ContractingTabs } from "@/components/contracting-tabs";
 import { ButtonContent } from "@/components/button-content";
 import Link from "next/link";
@@ -127,7 +128,7 @@ export default async function OpportunityDetail({
                     "Unidade",
                     "Quantidade",
                     "Valor unitário",
-                    "Total",
+                    "Total Estimado",
                   ].map((label) => (
                     <th scope="col" className="px-4 py-3" key={label}>
                       {label}
@@ -167,6 +168,7 @@ export default async function OpportunityDetail({
           </p>
         )}
       </section>
+      <ContractingFinancialSummary items={opportunity.items} />
       <div className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
         <section className="panel p-6">
           <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
@@ -284,7 +286,7 @@ export default async function OpportunityDetail({
           <section className="panel p-6">
             <h2 className="font-semibold">Histórico recente</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Últimas 10 alterações registradas
+              Últimas 5 alterações registradas
             </p>
             <ul className="mt-5 space-y-5">
               {history.map((log) => (
@@ -296,6 +298,9 @@ export default async function OpportunityDetail({
                         MIGRATE_CONTRACTING:
                           "Situação convertida para contratação",
                         UPDATE: "Cadastro atualizado",
+                        PRICE: "Precificação atualizada",
+                        WINNER: "Marcação de vencedor atualizada",
+                        WINNING_PRICE: "Proposta vencedora registrada",
                         ARCHIVE: "Contratação arquivada",
                         RESTORE: "Contratação restaurada",
                       } as Record<string, string>

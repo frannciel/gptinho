@@ -7,12 +7,14 @@ export function ActionForm({
   className,
   confirmation,
   id,
+  beforeSubmit,
 }: {
   action: (data: FormData) => Promise<ActionResult | void>;
   children: ReactNode;
   className?: string;
   confirmation?: string;
   id?: string;
+  beforeSubmit?: (event: React.FormEvent<HTMLFormElement>) => void;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const submitted = useRef<FormData | null>(null);
@@ -53,6 +55,7 @@ export function ActionForm({
       className={className}
       onSubmit={(e) => {
         if (confirmation && !confirm(confirmation)) e.preventDefault();
+        if (!e.defaultPrevented) beforeSubmit?.(e);
       }}
     >
       {result && !result.ok && (

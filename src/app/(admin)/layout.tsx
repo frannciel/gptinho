@@ -1,5 +1,6 @@
 import { requireAdminPage } from "@/lib/authorization";
-import { Sidebar, Navigation } from "@/components/navigation";
+import { SidebarFrame, SidebarToggle } from "@/components/sidebar-frame";
+import { Navigation } from "@/components/navigation";
 import { Logout } from "@/components/logout";
 import { Menu, ShieldCheck } from "lucide-react";
 export const dynamic = "force-dynamic";
@@ -18,10 +19,10 @@ export default async function AdminLayout({
       >
         Pular para o conteúdo
       </a>
-      <Sidebar />
-      <div className="lg:pl-64">
+      <SidebarFrame>
         <header className="flex min-h-20 items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 md:px-9">
           <div className="flex items-center gap-3">
+            <SidebarToggle />
             <details className="relative lg:hidden">
               <summary
                 className="list-none rounded-lg p-2"
@@ -72,7 +73,7 @@ export default async function AdminLayout({
         <footer className="px-5 py-6 text-xs text-slate-400 md:px-9">
           Govnex ERP · Gestão comercial e administrativa
         </footer>
-      </div>
+      </SidebarFrame>
     </div>
   );
 }

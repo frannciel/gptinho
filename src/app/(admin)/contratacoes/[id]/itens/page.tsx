@@ -73,12 +73,6 @@ export default async function ItemsPage({
         </p>
       )}
       <section className="panel overflow-hidden">
-        <div className="border-b p-5 text-sm">
-          Valor estimado:{" "}
-          {p.estimatedValue === null
-            ? "A definir"
-            : money(p.estimatedValue.toFixed(2))}
-        </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="bg-slate-50 text-xs text-slate-500">
@@ -90,7 +84,7 @@ export default async function ItemsPage({
                   "Quant.",
                   "Valor estimado",
                   "Preço Mínimo Viável",
-                  "Total",
+                  "Total Estimado",
                   "Ações",
                 ].map((t) => (
                   <th className="px-4 py-3" key={t}>
@@ -158,6 +152,12 @@ export default async function ItemsPage({
             </p>
           )}
         </div>
+        <footer className="border-t p-6 text-right font-semibold">
+          Valor Total Estimado:{" "}
+          {p.estimatedValue === null
+            ? "A definir"
+            : money(p.estimatedValue.toFixed(2))}
+        </footer>
       </section>
       {(s.new || item) && !p.archived && (
         <Modal

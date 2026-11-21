@@ -818,6 +818,7 @@ describe.sequential("Precificação e proposta vencedora", () => {
       item.id,
       parent.version,
       "80,1234",
+      "CLASSIFIED",
     );
     expect(result.winningUnitPrice?.toFixed(4)).toBe("80.1234");
     const other = await saveOpportunity(db, actorId, {
@@ -970,5 +971,84 @@ describe.sequential("Ordenação e busca paginada de fornecedores", () => {
     expect(
       new Set([...first.items, ...second.items].map((i) => i.id)).size,
     ).toBe(22);
+  });
+});
+
+describe.sequential("Situação da proposta e histórico recente", () => {
+  it("exige escolha explícita, salva situação e oferta atomicamente e preserva dados em falhas", async () => {
+    const op = await saveOpportunity(db, actorId, {
+      ...base(),
+      items: [{ ...base().items[0], winner: true }],
+    });
+    const item = op.items[0];
+    for (const status of [
+      "PROPOSAL_REGISTERED",
+      "CANCELLED",
+      "SUSPENDED",
+      "CLOSED",
+    ] as const) {
+      await db.opportunity.update({ where: { id: op.id }, data: { status } });
+      await expect(
+        saveWinningPrice(db, actorId, op.id, item.id, op.version, "100"),
+      ).rejects.toThrow("situação");
+      expect(
+        (await db.opportunityItem.findUniqueOrThrow({ where: { id: item.id } }))
+          .winningUnitPrice,
+      ).toBeNull();
+    }
+    await expect(
+      saveWinningPrice(
+        db,
+        actorId,
+        op.id,
+        item.id,
+        op.version,
+        "inválido",
+        "CLASSIFIED",
+      ),
+    ).rejects.toThrow();
+    expect(
+      (await db.opportunity.findUniqueOrThrow({ where: { id: op.id } })).status,
+    ).toBe("CLOSED");
+    await saveWinningPrice(
+      db,
+      actorId,
+      op.id,
+      item.id,
+      op.version,
+      "100",
+      "HOMOLOGATED",
+    );
+    expect(
+      (await db.opportunity.findUniqueOrThrow({ where: { id: op.id } })).status,
+    ).toBe("HOMOLOGATED");
+    const audit = await db.auditLog.findFirstOrThrow({
+      where: { entityId: op.id, action: "WINNING_PRICE" },
+    });
+    expect(audit.changes).toMatchObject({
+      beforeStatus: "CLOSED",
+      afterStatus: "HOMOLOGATED",
+    });
+    await saveWinningPrice(db, actorId, op.id, item.id, op.version + 1, "110");
+  });
+  it("retorna apenas as cinco últimas atualizações", async () => {
+    let op = await saveOpportunity(db, actorId, base());
+    for (let index = 0; index < 7; index++)
+      op = await saveOpportunity(
+        db,
+        actorId,
+        {
+          ...headerInput(op),
+          items: op.items.map(itemInput),
+          notes: `Atualização ${index}`,
+        },
+        op.id,
+        op.version,
+      );
+    const detail = await getOpportunityDetail(db, op.id);
+    expect(detail?.history).toHaveLength(5);
+    expect(JSON.stringify(detail?.history[0].changes)).toContain(
+      "Atualização 6",
+    );
   });
 });

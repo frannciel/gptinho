@@ -32,3 +32,7 @@ O usuário solicitou modais, Tipo Material/Serviço, alíquota tributária no lu
 ## Usabilidade e ordenação do catálogo
 
 O usuário solicitou ocultar inativos por padrão com consulta por situação, dropdown de fornecedores em cada produto e criação decrescente nas listas de catálogo, contratações, órgãos e fornecedores. Itens de contratação mantêm numeração crescente. A unidade de novos produtos inicia vazia. A seleção múltipla de fornecedores e o filtro usam consulta paginada no servidor. Labels e ícones das ações de formulário foram centralizados. Não há nova migration.
+
+## Resumo financeiro e situação da proposta vencedora
+
+O usuário confirmou receita estimada para todos os itens e oferta vencedora para os vencedores, com tributos e custo administrativo sobre a respectiva receita. Lucro líquido é a diferença entre receita e custos; percentual apurado usa o custo de aquisição como denominador. Componentes monetários são arredondados por item em centavos com HALF_UP, e o percentual geral é ponderado pela aquisição. Situação e oferta são atualizadas atomicamente após escolha explícita de Classificada ou Homologada quando necessário. Sem nova migration.
