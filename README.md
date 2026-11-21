@@ -162,3 +162,5 @@ Os ajustes de [catálogo, filtros e padrão de ações](docs/CATALOGO_USABILIDAD
 A entrega de [resumo financeiro e controle da proposta vencedora](docs/RESUMO_FINANCEIRO.md) documenta as bases confirmadas de cálculo e os ajustes mais recentes da interface.
 
 A atualização de [Em Análise, exclusão protegida e margem sobre receita](docs/CONTRATACOES_EXCLUSAO_MARGEM.md) descreve as migrations mais recentes e os ajustes do Resumo Financeiro.
+
+A correção de [fornecedor histórico da contratação](docs/FORNECEDOR_HISTORICO.md) separa a seleção já registrada das alterações posteriores no catálogo.

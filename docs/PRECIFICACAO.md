@@ -1,5 +1,7 @@
 # Catálogo, precificação e proposta vencedora
 
+A preservação do fornecedor após alterações do catálogo está detalhada em [FORNECEDOR_HISTORICO.md](FORNECEDOR_HISTORICO.md). Fornecedores já registrados podem ser mantidos, mesmo removidos ou inativos; novas escolhas seguem a lista ativa atual.
+
 Os ajustes posteriores de filtros, resumo financeiro e situação da proposta estão em [RESUMO_FINANCEIRO.md](RESUMO_FINANCEIRO.md).
 
 Esta entrega atende aos pedidos posteriores à primeira versão do catálogo. As orientações deste documento substituem as descrições anteriores de Margem e Custo Administrativo nos formulários de catálogo e itens.
