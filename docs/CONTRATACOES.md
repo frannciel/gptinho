@@ -1,5 +1,7 @@
 # Contratações e itens — atualização de 20/11/2026
 
+A atualização mais recente de modais, tributos, fornecedores múltiplos, precificação e proposta vencedora está em [PRECIFICACAO.md](PRECIFICACAO.md).
+
 ## Nome e navegação
 
 O módulo antes apresentado como Oportunidades passa a se chamar **Contratações**. As páginas canônicas são `/contratacoes`, `/contratacoes/nova`, `/contratacoes/:id` e `/contratacoes/:id/editar`. As páginas antigas redirecionam para as correspondentes novas. A API de consulta está em `/api/admin/contratacoes`; o endereço antigo permanece como alias autenticado da consulta atualizada.

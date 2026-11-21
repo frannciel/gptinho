@@ -7,33 +7,27 @@ import { actionError } from "@/lib/errors";
 import { saveCatalog } from "@/server/catalog";
 export async function saveCatalogAction(form: FormData) {
   const user = await requireAdmin();
-  let id: string;
+
   try {
     const data = Object.fromEntries(
-      [
-        "description",
-        "brand",
-        "model",
-        "unit",
-        "margin",
-        "administrativeCost",
-        "supplierId",
-      ].map((k) => [k, String(form.get(k) ?? "")]),
+      ["description", "brand", "model", "unit", "taxRate", "type"].map((k) => [
+        k,
+        String(form.get(k) ?? ""),
+      ]),
     );
-    const row = await saveCatalog(
+    await saveCatalog(
       db,
       user.id,
-      data,
+      { ...data, supplierIds: form.getAll("supplierIds") },
       String(form.get("id") || "") || undefined,
       Number(form.get("version")),
     );
-    id = row.id;
   } catch (e) {
     return actionError(e);
   }
 
   revalidatePath("/catalogo");
-  redirect(`/catalogo?edit=${id}&saved=1`);
+  redirect(`/catalogo?saved=1`);
 }
 export async function deactivateCatalogAction(form: FormData) {
   const user = await requireAdmin();

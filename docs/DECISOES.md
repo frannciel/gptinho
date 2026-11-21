@@ -24,3 +24,7 @@ A solicitação atual renomeia a interface para Contratações e determina que o
 ## Catálogo e ressalvas do tópico 4 — 20/11/2026
 
 O usuário aprovou Contratações com ressalvas e priorizou o catálogo de itens comercializados no módulo 6. O gerenciamento de itens passa a ter tela própria. Marca/Modelo opcionais e Unidade/Fornecedor/Margem/Custo Administrativo são copiados do catálogo, mantendo snapshot no item. Percentuais não modificam o valor estimado; fórmula de formação de preço ainda será tratada na etapa correspondente. Itens legados ficam pendentes de complementação em vez de receber dados presumidos.
+
+## Revisão do catálogo e precificação
+
+O usuário solicitou modais, Tipo Material/Serviço, alíquota tributária no lugar de Margem e fornecedores múltiplos no catálogo. O custo administrativo sai do catálogo e passa a ser parâmetro percentual da precificação. As margens legadas são preservadas sem conversão em tributos. Foi fornecida fórmula explícita de preço mínimo com denominador positivo; o cálculo usa decimal exato, snapshot e HALF_UP (quatro casas unitárias, duas nos totais). Vencedor é atributo booleano do item e a proposta vencedora registra ofertas unitárias com quatro casas. Classificada é uma situação adicional da contratação.

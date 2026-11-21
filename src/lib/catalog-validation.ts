@@ -7,12 +7,18 @@ export const percentage = z
     /^\d{1,3}([.,]\d{1,2})?$/,
     "Informe um percentual com até duas casas decimais.",
   )
-  .transform((v) => Number(v.replace(",", ".")))
-  .refine((v) => v >= 0 && v <= 100, "Informe de 0 a 100%.")
-  .transform((v) => v.toFixed(2));
+  .transform((v) => {
+    const [whole, fraction = ""] = v.replace(",", ".").split(".");
+    return `${whole.replace(/^0+(?=\d)/, "")}.${fraction.padEnd(2, "0")}`;
+  })
+  .refine((v) => BigInt(v.replace(".", "")) <= 10000n, "Informe de 0 a 100%.");
 export const catalogSchema = z
   .object({
-    description: z.string().trim().min(3).max(5000),
+    description: z
+      .string()
+      .trim()
+      .min(3, "Informe pelo menos 3 caracteres.")
+      .max(20000, "Use no máximo 20000 caracteres."),
     brand: z
       .string()
       .trim()
@@ -29,8 +35,12 @@ export const catalogSchema = z
       .min(1)
       .max(20)
       .transform((v) => v.toUpperCase()),
-    margin: percentage,
-    administrativeCost: percentage,
-    supplierId: idSchema,
+    type: z.enum(["MATERIAL", "SERVICE"]),
+    taxRate: percentage,
+    supplierIds: z
+      .array(idSchema)
+      .min(1, "Selecione pelo menos um fornecedor.")
+      .max(100)
+      .refine((v) => new Set(v).size === v.length, "Fornecedor repetido."),
   })
   .strict();

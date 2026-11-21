@@ -1,4 +1,5 @@
 export const OPPORTUNITY_STATUS_VALUES = [
+  "CLASSIFIED",
   "CANCELLED",
   "SUSPENDED",
   "HOMOLOGATED",
@@ -9,6 +10,7 @@ export const OPPORTUNITY_STATUSES: Record<
   (typeof OPPORTUNITY_STATUS_VALUES)[number],
   string
 > = {
+  CLASSIFIED: "Classificada",
   CANCELLED: "Cancelada",
   SUSPENDED: "Suspensa",
   HOMOLOGATED: "Homologada",
@@ -16,6 +18,7 @@ export const OPPORTUNITY_STATUSES: Record<
   CLOSED: "Encerrada",
 };
 export const OPEN_OPPORTUNITY_STATUSES = [
+  "CLASSIFIED",
   "PROPOSAL_REGISTERED",
   "SUSPENDED",
   "HOMOLOGATED",

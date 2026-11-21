@@ -6,11 +6,13 @@ export function ActionForm({
   children,
   className,
   confirmation,
+  id,
 }: {
   action: (data: FormData) => Promise<ActionResult | void>;
   children: ReactNode;
   className?: string;
   confirmation?: string;
+  id?: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const submitted = useRef<FormData | null>(null);
@@ -45,6 +47,7 @@ export function ActionForm({
   }, [result]);
   return (
     <form
+      id={id}
       ref={formRef}
       action={submit}
       className={className}

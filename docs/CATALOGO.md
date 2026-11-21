@@ -1,5 +1,7 @@
 # Catálogo e itens das contratações
 
+A atualização mais recente de modais, tributos, fornecedores múltiplos, precificação e proposta vencedora está em [PRECIFICACAO.md](PRECIFICACAO.md).
+
 ## Planejamento atualizado
 
 O tópico 4 (Contratações) foi aprovado pelo usuário com ressalvas. Esta entrega atende às ressalvas e antecipa o catálogo do módulo 6, necessário como origem dos itens. A formação de preço completa continua prevista após cotações; não foi definida fórmula de preço de venda a partir de margem e custo administrativo.
