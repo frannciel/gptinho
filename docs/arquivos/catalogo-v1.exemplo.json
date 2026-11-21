@@ -1,0 +1,21 @@
+{
+  "versao": "1.0",
+  "tipo": "itens_catalogo",
+  "loteId": "tr-exemplo-001",
+  "origem": {
+    "documento": "termo-de-referencia.pdf",
+    "referencia": "Item 1"
+  },
+  "itens": [
+    {
+      "codigo": "CAT-001",
+      "tipo": "MATERIAL",
+      "descricao": "Descrição completa do item conforme o termo de referência.",
+      "marca": null,
+      "modelo": null,
+      "unidade": "UN",
+      "aliquotaTributaria": null,
+      "fornecedoresCnpj": []
+    }
+  ]
+}

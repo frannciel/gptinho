@@ -15,7 +15,10 @@ Sistema interno da **Govnex Soluções Digitais Ltda.**: fundação, autenticaç
 - Dashboard com contagens consultadas no banco; módulos futuros explicitamente identificados, sem indicadores fictícios.
 - Layout responsivo em português, valores em BRL, datas no fuso de São Paulo e tokens de identidade visual reutilizáveis.
 
-**Ainda não implementados:** lotes, catálogo, cotações, formação de preço de venda, propostas/PDF, pedidos, fornecimentos e financeiro. Os zeros desses módulos são placeholders identificados, não apurações. Não há integração externa automática.
+- Catálogo de materiais/serviços, fornecedores múltiplos e históricos, precificação decimal, ofertas vencedoras e resumo financeiro.
+- Importação JSON em lote com prévia e confirmação; exportação de dados de proposta em JSON/Markdown por arquivo.
+
+**Escopo atualizado:** gestão de cotações está fora do MVP. A proposta comercial será elaborada por agente externo com arquivos e modelo fornecidos pelo usuário, sem integração direta. Contratos completos, pedidos/fornecimentos e faturamento/recebimentos continuam para definição das próximas entregas. Consulte o [planejamento atualizado](docs/PLANEJAMENTO.md) e os [formatos de arquivos](docs/ARQUIVOS_IMPORTACAO_EXPORTACAO.md).
 
 ## Requisitos e instalação
 

@@ -275,7 +275,7 @@ export default async function Dashboard() {
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {[
             "Contratação",
-            "Cotação",
+            "Importação de itens",
             "Precificação",
             "Proposta",
             "Contrato / empenho",

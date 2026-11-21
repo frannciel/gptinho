@@ -1,0 +1,23 @@
+{
+  "versao": "1.0",
+  "tipo": "itens_contratacao",
+  "loteId": "tr-exemplo-001",
+  "origem": {
+    "documento": "termo-de-referencia.pdf",
+    "referencia": "Item 1"
+  },
+  "itens": [
+    {
+      "numero": 1,
+      "tipo": "MATERIAL",
+      "descricao": "Descrição completa do item conforme o termo de referência.",
+      "marca": null,
+      "modelo": null,
+      "unidade": "UN",
+      "quantidade": "2.000",
+      "valorUnitarioEstimado": "100.0000",
+      "catalogoId": null,
+      "catalogoReferencia": null
+    }
+  ]
+}

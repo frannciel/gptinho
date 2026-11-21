@@ -79,10 +79,15 @@ export default async function CatalogPage({
         title="Catálogo de itens comercializados"
         description="Produtos e serviços, características e fornecedores disponíveis."
         action={
-          <Link href="/catalogo?new=1" className="btn">
-            <Plus size={17} />
-            Novo item
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/catalogo/importar" className="btn-secondary">
+              Importar JSON
+            </Link>
+            <Link href="/catalogo?new=1" className="btn">
+              <Plus size={17} />
+              Novo item
+            </Link>
+          </div>
         }
       />
       {s.saved && (
