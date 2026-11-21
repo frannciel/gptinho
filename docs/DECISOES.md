@@ -40,3 +40,7 @@ O usuário confirmou receita estimada para todos os itens e oferta vencedora par
 ## Revisão: Em Análise, exclusão e margem sobre receita
 
 A nova instrução do usuário substitui a base anterior do percentual apurado: agora lucro líquido / receita, tanto no resumo quanto no indicador das ofertas. O indicador é apenas exibição e o botão Salvar volta a Ações. Em Análise é padrão somente para novas contratações. Exclusão física exige confirmação e é vedada para arquivadas ou vinculadas a contratos. Cria-se o vínculo mínimo Contract para esse bloqueio no banco; o módulo completo de contratos permanece para entrega futura.
+
+## Independência do fornecedor da contratação
+
+O usuário determinou que remoção/desativação no catálogo não afete os itens da contratação, principalmente arquivadas. O ID selecionado já era independente no banco; corrige-se a tela que o filtrava e a validação que impedia mantê-lo no recálculo. Novas escolhas permanecem restritas ao catálogo ativo. A identificação do fornecedor passa a integrar o snapshot de novas precificações e é preservada em recálculos com o mesmo fornecedor. Arquivadas continuam imutáveis. Sem nova migration ou regravação automática de dados antigos.

@@ -1119,3 +1119,233 @@ describe.sequential("Exclusão de contratação e padrão Em Análise", () => {
     ).toBe(1);
   });
 });
+
+describe.sequential("Fornecedor histórico independente do catálogo", () => {
+  const pricing = () => ({
+    supplierId,
+    acquisitionUnit: "100",
+    freightUnit: "10",
+    taxRate: "10",
+    netProfitRate: "20",
+    pricingAdministrativeRate: "5",
+  });
+  const setup = async () => {
+    await db.organization.update({
+      where: { id: supplierId },
+      data: { active: true, roles: ["SUPPLIER"] },
+    });
+    const alternate = await db.organization.create({
+      data: {
+        legalName: "Fornecedor alternativo histórico",
+        roles: ["SUPPLIER"],
+      },
+    });
+    const productInput = {
+      description: "Produto com fornecedores independentes",
+      brand: "Marca preservada",
+      model: "Modelo preservado",
+      unit: "UN",
+      type: "MATERIAL",
+      taxRate: "10",
+      supplierIds: [supplierId, alternate.id],
+    };
+    const product = await saveCatalog(db, actorId, productInput);
+    const op = await saveOpportunity(db, actorId, {
+      ...base(),
+      items: [{ ...base().items[0], catalogProductId: product.id }],
+    });
+    const item = await saveItemPricing(
+      db,
+      actorId,
+      op.id,
+      op.items[0].id,
+      op.version,
+      pricing(),
+    );
+    return { product, productInput, op, item, alternate };
+  };
+  it.each([false, true])(
+    "remoção, desativação e alteração do catálogo preservam item e parâmetros; arquivada=%s",
+    async (archived) => {
+      const { product, productInput, op, item, alternate } = await setup();
+      if (archived)
+        await archiveOpportunity(db, actorId, op.id, op.version + 1, true);
+      const before = await db.opportunity.findUniqueOrThrow({
+        where: { id: op.id },
+        include: { items: true },
+      });
+      await saveCatalog(
+        db,
+        actorId,
+        {
+          ...productInput,
+          brand: "Outra marca",
+          taxRate: "20",
+          supplierIds: [alternate.id],
+        },
+        product.id,
+        product.version,
+      );
+      await db.catalogProduct.update({
+        where: { id: product.id },
+        data: { active: false },
+      });
+      await db.organization.update({
+        where: { id: supplierId },
+        data: { active: false },
+      });
+      const after = await db.opportunity.findUniqueOrThrow({
+        where: { id: op.id },
+        include: { items: true },
+      });
+      expect(JSON.parse(JSON.stringify(after))).toEqual(
+        JSON.parse(JSON.stringify(before)),
+      );
+      expect(after.items[0].supplierId).toBe(supplierId);
+      expect(after.items[0].pricingSnapshot).toMatchObject({
+        supplierSnapshot: { id: supplierId },
+      });
+      if (archived)
+        await expect(
+          saveItemPricing(
+            db,
+            actorId,
+            op.id,
+            item.id,
+            after.version,
+            pricing(),
+          ),
+        ).rejects.toThrow("indisponível");
+      else {
+        const repriced = await saveItemPricing(
+          db,
+          actorId,
+          op.id,
+          item.id,
+          after.version,
+          { ...pricing(), acquisitionUnit: "50" },
+        );
+        expect(repriced.supplierId).toBe(supplierId);
+        expect(repriced.pricingSnapshot).toMatchObject({
+          supplierSnapshot: (
+            item.pricingSnapshot as { supplierSnapshot: unknown }
+          ).supplierSnapshot,
+        });
+      }
+    },
+  );
+  it("preserva identificação original ao recalcular o mesmo fornecedor e permite troca explícita para outro elegível", async () => {
+    const { op, item, product, productInput, alternate } = await setup();
+    const snapshot = (item.pricingSnapshot as { supplierSnapshot: unknown })
+      .supplierSnapshot;
+    await db.organization.update({
+      where: { id: supplierId },
+      data: { legalName: "Fornecedor renomeado", active: false },
+    });
+    await saveCatalog(
+      db,
+      actorId,
+      { ...productInput, supplierIds: [alternate.id] },
+      product.id,
+      product.version,
+    );
+    const kept = await saveItemPricing(
+      db,
+      actorId,
+      op.id,
+      item.id,
+      op.version + 1,
+      pricing(),
+    );
+    expect(kept.pricingSnapshot).toMatchObject({ supplierSnapshot: snapshot });
+    const changed = await saveItemPricing(
+      db,
+      actorId,
+      op.id,
+      item.id,
+      op.version + 2,
+      { ...pricing(), supplierId: alternate.id },
+    );
+    expect(changed.pricingSnapshot).toMatchObject({
+      supplierSnapshot: { id: alternate.id, legalName: alternate.legalName },
+    });
+    const logs = await db.auditLog.findMany({
+      where: { entityId: op.id, action: "PRICE" },
+    });
+    expect(logs).toHaveLength(3);
+    expect(logs.map((log) => log.changes)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          after: expect.objectContaining({
+            pricingSnapshot: expect.objectContaining({
+              supplierSnapshot: snapshot,
+            }),
+          }),
+        }),
+      ]),
+    );
+  });
+  it("a exceção histórica vale somente para o fornecedor já salvo naquele item", async () => {
+    const { op, product, productInput, alternate } = await setup();
+    await saveCatalog(
+      db,
+      actorId,
+      { ...productInput, supplierIds: [alternate.id] },
+      product.id,
+      product.version,
+    );
+    const other = await saveOpportunity(db, actorId, {
+      ...base(),
+      reference: "OUTRA-HISTORIA",
+      items: [{ ...base().items[0], catalogProductId: product.id }],
+    });
+    await expect(
+      saveItemPricing(
+        db,
+        actorId,
+        other.id,
+        other.items[0].id,
+        other.version,
+        pricing(),
+      ),
+    ).rejects.toThrow("fornecedor ativo");
+    await db.organization.update({
+      where: { id: alternate.id },
+      data: { active: false },
+    });
+    await expect(
+      saveItemPricing(db, actorId, other.id, other.items[0].id, other.version, {
+        ...pricing(),
+        supplierId: alternate.id,
+      }),
+    ).rejects.toThrow("fornecedor ativo");
+    expect(
+      (
+        await db.opportunityItem.findUniqueOrThrow({
+          where: { id: op.items[0].id },
+        })
+      ).supplierId,
+    ).toBe(supplierId);
+  });
+  it("remoção no catálogo e recálculo do fornecedor já registrado podem ocorrer em paralelo", async () => {
+    const { op, item, product, productInput, alternate } = await setup();
+    const results = await Promise.allSettled([
+      saveCatalog(
+        db,
+        actorId,
+        { ...productInput, supplierIds: [alternate.id] },
+        product.id,
+        product.version,
+      ),
+      saveItemPricing(db, actorId, op.id, item.id, op.version + 1, pricing()),
+    ]);
+    expect(results.map((result) => result.status)).toEqual([
+      "fulfilled",
+      "fulfilled",
+    ]);
+    expect(
+      (await db.opportunityItem.findUniqueOrThrow({ where: { id: item.id } }))
+        .supplierId,
+    ).toBe(supplierId);
+  });
+});

@@ -6,6 +6,7 @@ import {
   monetary4,
   winnerTotals,
 } from "@/lib/pricing";
+import { recordedSupplier, supplierIdentity } from "@/lib/item-supplier";
 import { idSchema } from "@/lib/validation";
 import { BusinessError } from "@/lib/errors";
 async function changeItem(
@@ -35,27 +36,44 @@ async function changeItem(
       let statusChange: "CLASSIFIED" | "HOMOLOGATED" | undefined;
       if (operation === "PRICE") {
         const input = pricingSchema.parse(value);
-        if (!before.catalogProductId)
+        const retainingSupplier = before.supplierId === input.supplierId;
+        if (!retainingSupplier && !before.catalogProductId)
           throw new BusinessError(
             "Vincule o item ao catálogo antes de precificar.",
           );
-        await tx.$queryRaw`SELECT "id" FROM "CatalogProduct" WHERE "id" = ${before.catalogProductId} FOR UPDATE`;
-        const membership = await tx.catalogSupplier.findUnique({
-          where: {
-            catalogProductId_supplierId: {
-              catalogProductId: before.catalogProductId,
-              supplierId: input.supplierId,
-            },
-          },
-          include: { supplier: true },
+        await tx.$queryRaw`SELECT "id" FROM "Organization" WHERE "id" = ${input.supplierId} FOR UPDATE`;
+        const supplier = await tx.organization.findUnique({
+          where: { id: input.supplierId },
         });
-        if (
-          !membership?.supplier.active ||
-          !membership.supplier.roles.includes("SUPPLIER")
-        )
-          throw new BusinessError(
-            "Selecione um fornecedor ativo da lista deste item do catálogo.",
-          );
+        if (!supplier) throw new BusinessError("Fornecedor não encontrado.");
+        if (before.catalogProductId)
+          await tx.$queryRaw`SELECT "id" FROM "CatalogProduct" WHERE "id" = ${before.catalogProductId} FOR UPDATE`;
+        if (!retainingSupplier) {
+          const membership = await tx.catalogSupplier.findUnique({
+            where: {
+              catalogProductId_supplierId: {
+                catalogProductId: before.catalogProductId!,
+                supplierId: input.supplierId,
+              },
+            },
+            include: { catalogProduct: { select: { active: true } } },
+          });
+          if (
+            !membership?.catalogProduct.active ||
+            !supplier.active ||
+            !supplier.roles.includes("SUPPLIER")
+          )
+            throw new BusinessError(
+              "Selecione um fornecedor ativo da lista deste item do catálogo.",
+            );
+        }
+        const selectedSupplier = retainingSupplier
+          ? recordedSupplier({
+              supplierId: before.supplierId,
+              pricingSnapshot: before.pricingSnapshot,
+              supplier,
+            })!
+          : supplierIdentity(supplier);
         const minimumPrice = minimumViablePrice(input);
         const { supplierId, ...fields } = input;
         data = {
@@ -64,6 +82,7 @@ async function changeItem(
           minimumPrice,
           pricingSnapshot: {
             ...input,
+            supplierSnapshot: selectedSupplier,
             minimumPrice,
             formulaVersion: "1",
             rounding: "HALF_UP",

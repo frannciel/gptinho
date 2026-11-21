@@ -647,3 +647,146 @@ test("exclusão de contratação confirma perda de dados e respeita contratos e 
   });
   expect(await forged.text()).toContain("Sessão expirada");
 });
+
+test("fornecedor precificado permanece selecionado após remoção, desativação e arquivamento", async ({
+  page,
+}) => {
+  test.setTimeout(90000);
+  page.setDefaultTimeout(10000);
+  const product = await db.catalogProduct.create({
+    data: {
+      description: `Produto histórico ${suffix}`,
+      type: "MATERIAL",
+      taxRate: "10",
+      unit: "UN",
+      supplierId,
+      suppliers: { create: [{ supplierId }, { supplierId: secondSupplierId }] },
+    },
+  });
+  const op = await db.opportunity.create({
+    data: {
+      reference: `HIST-${suffix}`.toUpperCase(),
+      organizationId: agencyId,
+      subject: "Contratação para preservar o fornecedor",
+      estimatedValue: "100",
+      items: {
+        create: {
+          number: 1,
+          description: "Item de fornecedor preservado",
+          unit: "UN",
+          quantity: "1",
+          unitPrice: "100",
+          total: "100",
+          catalogProductId: product.id,
+          taxRate: "10",
+        },
+      },
+    },
+  });
+  await page.goto("/login");
+  await page.getByLabel("E-mail corporativo").fill(email);
+  await page.getByLabel("Senha", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto(`/contratacoes/${op.id}/precificacao`);
+  await page.getByLabel("Fornecedor do item 1").selectOption(supplierId);
+  await page.getByLabel("Valor de Aquisição do item 1").fill("100");
+  await page.getByLabel("Custo de frete do item 1").fill("10");
+  await page.getByLabel("Lucro Líquido do item 1").fill("20");
+  await page.getByLabel("Custo Administrativo do item 1").fill("5");
+  await page
+    .getByRole("button", { name: "Salvar precificação do item 1" })
+    .click();
+  await expect(page.getByRole("status")).toContainText("Precificação salva");
+  const priced = await db.opportunityItem.findFirstOrThrow({
+    where: { opportunityId: op.id },
+  });
+  expect(priced.pricingSnapshot).toMatchObject({
+    supplierSnapshot: {
+      id: supplierId,
+      legalName: `Somente Fornecedor ${suffix}`,
+    },
+  });
+  await page.goto(`/catalogo?edit=${product.id}`);
+  const modal = page.getByRole("dialog");
+  await modal
+    .getByRole("button", {
+      name: `Remover Somente Fornecedor ${suffix}`,
+      exact: true,
+    })
+    .click();
+  await modal
+    .getByRole("button", { name: "Salvar item do catálogo", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page.goto(`/catalogo?q=${encodeURIComponent(product.description)}`);
+  page.once("dialog", (dialog) => dialog.accept());
+  await page
+    .getByRole("row")
+    .filter({ hasText: product.description })
+    .getByRole("button", { name: "Desativar", exact: true })
+    .click();
+  await expect
+    .poll(
+      async () =>
+        (
+          await db.catalogProduct.findUniqueOrThrow({
+            where: { id: product.id },
+          })
+        ).active,
+    )
+    .toBe(false);
+  await db.organization.update({
+    where: { id: supplierId },
+    data: { active: false },
+  });
+  expect(
+    JSON.stringify(
+      await db.opportunityItem.findUniqueOrThrow({ where: { id: priced.id } }),
+    ),
+  ).toBe(JSON.stringify(priced));
+  await page.goto(`/contratacoes/${op.id}/precificacao`);
+  const supplier = page.getByLabel("Fornecedor do item 1");
+  await expect(supplier).toHaveValue(supplierId);
+  await expect(supplier.locator("option:checked")).toContainText(
+    `Somente Fornecedor ${suffix}`,
+  );
+  await expect(supplier.locator("option")).toHaveCount(2);
+  await page.getByLabel("Valor de Aquisição do item 1").fill("120");
+  await page
+    .getByRole("button", { name: "Salvar precificação do item 1" })
+    .click();
+  await expect(page.getByRole("cell", { name: /200,0000/ })).toBeVisible();
+  await page.goto(`/contratacoes/${op.id}`);
+  await page.getByRole("button", { name: "Arquivar", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Confirmar arquivamento", exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/contratacoes\?notice=archived$/);
+  const archivedItem = await db.opportunityItem.findUniqueOrThrow({
+    where: { id: priced.id },
+  });
+  await db.organization.update({
+    where: { id: supplierId },
+    data: { legalName: "Nome alterado após arquivamento", active: true },
+  });
+  await db.catalogProduct.update({
+    where: { id: product.id },
+    data: { active: true, description: "Descrição alterada no catálogo" },
+  });
+  await page.goto(`/contratacoes/${op.id}/precificacao`);
+  await expect(page.getByLabel("Fornecedor do item 1")).toBeDisabled();
+  await expect(page.getByLabel("Fornecedor do item 1")).toHaveValue(supplierId);
+  await expect(
+    page.getByLabel("Fornecedor do item 1").locator("option:checked"),
+  ).toContainText(`Somente Fornecedor ${suffix}`);
+  await expect(
+    page.getByRole("button", { name: "Salvar precificação do item 1" }),
+  ).toHaveCount(0);
+  expect(
+    JSON.stringify(
+      await db.opportunityItem.findUniqueOrThrow({ where: { id: priced.id } }),
+    ),
+  ).toBe(JSON.stringify(archivedItem));
+});

@@ -1,3 +1,4 @@
+import { recordedSupplier } from "@/lib/item-supplier";
 import { ButtonContent } from "@/components/button-content";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
@@ -24,6 +25,7 @@ export default async function PricingPage({
       items: {
         orderBy: { number: "asc" },
         include: {
+          supplier: true,
           catalogProduct: {
             include: { suppliers: { include: { supplier: true } } },
           },
@@ -81,11 +83,32 @@ export default async function PricingPage({
           <tbody className="divide-y divide-slate-100">
             {p.items.map((i) => {
               const formId = `pricing-${i.id}`;
-              const suppliers =
-                i.catalogProduct?.suppliers.filter(
-                  (s) =>
-                    s.supplier.active && s.supplier.roles.includes("SUPPLIER"),
-                ) ?? [];
+              const savedSupplier = recordedSupplier(i);
+              const suppliers = [
+                ...(savedSupplier
+                  ? [
+                      {
+                        id: savedSupplier.id,
+                        legalName: savedSupplier.legalName,
+                        recorded: true,
+                      },
+                    ]
+                  : []),
+                ...(!p.archived && i.catalogProduct?.active
+                  ? i.catalogProduct.suppliers
+                      .filter(
+                        (s) =>
+                          s.supplier.active &&
+                          s.supplier.roles.includes("SUPPLIER") &&
+                          s.supplierId !== i.supplierId,
+                      )
+                      .map((s) => ({
+                        id: s.supplierId,
+                        legalName: s.supplier.legalName,
+                        recorded: false,
+                      }))
+                  : []),
+              ];
               const alert = aboveReference(
                 i.minimumPrice?.toFixed(4) ?? null,
                 i.unitPrice?.toFixed(4) ?? null,
@@ -108,20 +131,22 @@ export default async function PricingPage({
                       required
                       disabled={p.archived}
                     >
-                      <option value="">Selecione</option>
+                      <option value="">
+                        {p.archived ? "Não informado" : "Selecione"}
+                      </option>
                       {suppliers.map((s) => (
-                        <option key={s.supplierId} value={s.supplierId}>
-                          {s.supplier.legalName}
+                        <option key={s.id} value={s.id}>
+                          {s.legalName}
+                          {s.recorded ? " · Registrado na contratação" : ""}
                         </option>
                       ))}
                     </select>
-                    {i.supplierId &&
-                      !suppliers.some((s) => s.supplierId === i.supplierId) && (
-                        <p className="mt-1 text-xs text-amber-800">
-                          Fornecedor anterior indisponível. Escolha um
-                          fornecedor da lista atual para recalcular.
-                        </p>
-                      )}
+                    {savedSupplier && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        O fornecedor registrado é preservado mesmo após
+                        alterações no catálogo.
+                      </p>
+                    )}
                   </td>
                   {(
                     [
