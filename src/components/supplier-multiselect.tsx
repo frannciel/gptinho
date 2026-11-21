@@ -7,11 +7,13 @@ export function SupplierMultiselect({
   multiple = true,
   name = "supplierIds",
   includeInactive = false,
+  onSelectionChange,
 }: {
   initial: Supplier[];
   multiple?: boolean;
   name?: string;
   includeInactive?: boolean;
+  onSelectionChange?: () => void;
 }) {
   const [selected, setSelected] = useState(initial);
   const [query, setQuery] = useState("");
@@ -85,6 +87,7 @@ export function SupplierMultiselect({
         ?.scrollIntoView({ block: "nearest" });
   }, [cursor, open, listId]);
   const toggle = (s: Supplier) => {
+    onSelectionChange?.();
     setSelected((before) =>
       before.some((item) => item.id === s.id)
         ? before.filter((item) => item.id !== s.id)
@@ -117,11 +120,12 @@ export function SupplierMultiselect({
               type="button"
               className="rounded p-0.5 hover:bg-brand-100"
               aria-label={`Remover ${s.legalName}`}
-              onClick={() =>
+              onClick={() => {
+                onSelectionChange?.();
                 setSelected((before) =>
                   before.filter((item) => item.id !== s.id),
-                )
-              }
+                );
+              }}
             >
               <X size={14} />
             </button>

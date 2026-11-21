@@ -17,6 +17,13 @@ import {
   setItemWinner,
   saveWinningPrice,
 } from "@/server/pricing";
+import {
+  previewImport,
+  commitImport,
+  type ImportPreview,
+} from "@/server/data-import";
+import { proposalExport, proposalFileText } from "@/server/proposal-export";
+import { importExample } from "@/lib/data-files";
 import { saveCatalog } from "@/server/catalog";
 import { itemInput, headerInput } from "@/server/item-input";
 import {
@@ -1348,4 +1355,320 @@ describe.sequential("Fornecedor histórico independente do catálogo", () => {
         .supplierId,
     ).toBe(supplierId);
   });
+});
+
+describe.sequential("Importação e exportação por arquivos", () => {
+  const defaults = () => ({ supplierIds: [supplierId], taxRate: "10.00" });
+  const catalog = () =>
+    JSON.stringify({
+      ...importExample("catalogo"),
+      loteId: `catalog-${randomUUID()}`,
+    });
+  const contract = (number = 2, loteId = `contract-${randomUUID()}`) => {
+    const file = importExample("contratacao");
+    file.loteId = loteId;
+    Object.assign(file.itens[0], { numero: number });
+    return JSON.stringify(file);
+  };
+  const preview = async (
+    text: string,
+    kind: "catalogo" | "contratacao",
+    target?: string,
+  ): Promise<ImportPreview> => {
+    const p = await previewImport(db, text, kind, target, defaults());
+    if (!("token" in p)) throw new Error("Lote já importado");
+    return p;
+  };
+  beforeEach(async () => {
+    await db.organization.update({
+      where: { id: supplierId },
+      data: { active: true, roles: ["SUPPLIER"] },
+    });
+  });
+  it("prévia não grava; confirmação acrescenta itens sem alterar os existentes", async () => {
+    const op = await saveOpportunity(db, actorId, base());
+    const original = JSON.stringify(op.items[0]);
+    const text = contract();
+    const p = await preview(text, "contratacao", op.id);
+    expect(await db.opportunityItem.count()).toBe(1);
+    expect(p.warnings).toHaveLength(1);
+    const result = await commitImport(
+      db,
+      actorId,
+      text,
+      "contratacao",
+      op.id,
+      defaults(),
+      p.token,
+    );
+    expect(result.count).toBe(1);
+    const after = await db.opportunity.findUniqueOrThrow({
+      where: { id: op.id },
+      include: { items: { orderBy: { number: "asc" } } },
+    });
+    expect(JSON.stringify(after.items[0])).toBe(original);
+    expect(after.estimatedValue?.toFixed(2)).toBe("1434.56");
+    expect(after.items[1].catalogProductId).toBeNull();
+    expect(after.items[1].winner).toBe(false);
+  });
+  it("rejeita colisão, arquivadas e versão desatualizada sem importação parcial", async () => {
+    const op = await saveOpportunity(db, actorId, base());
+    await expect(preview(contract(1), "contratacao", op.id)).rejects.toThrow(
+      "já cadastrado",
+    );
+    const text = contract();
+    const p = await preview(text, "contratacao", op.id);
+    await db.opportunity.update({
+      where: { id: op.id },
+      data: { notes: "Edição posterior à prévia", version: { increment: 1 } },
+    });
+    await expect(
+      commitImport(
+        db,
+        actorId,
+        text,
+        "contratacao",
+        op.id,
+        defaults(),
+        p.token,
+      ),
+    ).rejects.toThrow("mudaram");
+    const fresh = await preview(text, "contratacao", op.id);
+    await archiveOpportunity(db, actorId, op.id, op.version + 1, true);
+    await expect(
+      commitImport(
+        db,
+        actorId,
+        text,
+        "contratacao",
+        op.id,
+        defaults(),
+        fresh.token,
+      ),
+    ).rejects.toThrow("arquivadas");
+    expect(await db.opportunityItem.count()).toBe(1);
+  });
+  it("valida complementos comerciais e CNPJs sem criar fornecedor nem taxa fictícia", async () => {
+    const text = catalog();
+    await expect(
+      previewImport(db, text, "catalogo", undefined, {
+        supplierIds: [],
+        taxRate: null,
+      }),
+    ).rejects.toThrow("alíquota");
+    const p = await preview(text, "catalogo");
+    expect(await db.catalogProduct.count()).toBe(0);
+    await db.organization.update({
+      where: { id: supplierId },
+      data: { active: false },
+    });
+    await expect(
+      commitImport(
+        db,
+        actorId,
+        text,
+        "catalogo",
+        undefined,
+        defaults(),
+        p.token,
+      ),
+    ).rejects.toThrow("inativo");
+    expect(await db.catalogProduct.count()).toBe(0);
+  });
+  it("importa catálogo e vincula itens por lote/código sem IDs internos fornecidos pela IA", async () => {
+    const text = catalog();
+    const p = await preview(text, "catalogo");
+    await commitImport(
+      db,
+      actorId,
+      text,
+      "catalogo",
+      undefined,
+      defaults(),
+      p.token,
+    );
+    const product = await db.catalogProduct.findFirstOrThrow();
+    const op = await saveOpportunity(db, actorId, base());
+    const file = JSON.parse(contract());
+    file.itens[0].catalogoReferencia = { loteId: p.loteId, codigo: "CAT-001" };
+    const payload = JSON.stringify(file);
+    const c = await preview(payload, "contratacao", op.id);
+    expect(c.rows[0].catalogProductId).toBe(product.id);
+    await commitImport(
+      db,
+      actorId,
+      payload,
+      "contratacao",
+      op.id,
+      defaults(),
+      c.token,
+    );
+    expect(
+      (
+        await db.opportunityItem.findFirstOrThrow({
+          where: { opportunityId: op.id, number: 2 },
+        })
+      ).taxRate?.toFixed(2),
+    ).toBe("10.00");
+  });
+  it("mesmo lote é idempotente inclusive com confirmação simultânea e conflito de conteúdo", async () => {
+    const op = await saveOpportunity(db, actorId, base());
+    const text = contract();
+    const p = await preview(text, "contratacao", op.id);
+    const results = await Promise.all([
+      commitImport(
+        db,
+        actorId,
+        text,
+        "contratacao",
+        op.id,
+        defaults(),
+        p.token,
+      ),
+      commitImport(
+        db,
+        actorId,
+        text,
+        "contratacao",
+        op.id,
+        defaults(),
+        p.token,
+      ),
+    ]);
+    expect(results.filter((r) => r.alreadyImported)).toHaveLength(1);
+    expect(await db.opportunityItem.count()).toBe(2);
+    expect(
+      await previewImport(db, text, "contratacao", op.id, defaults()),
+    ).toMatchObject({ alreadyImported: true });
+    const changed = JSON.parse(text);
+    changed.itens[0].descricao = "Outro conteúdo no mesmo lote";
+    await expect(
+      commitImport(
+        db,
+        actorId,
+        JSON.stringify(changed),
+        "contratacao",
+        op.id,
+        defaults(),
+        p.token,
+      ),
+    ).rejects.toThrow("loteId");
+  });
+  it("exporta dados explícitos para proposta sem custos internos, notas ou snapshots", async () => {
+    const product = await saveCatalog(db, actorId, {
+      description: "Produto para exportar",
+      brand: "",
+      model: "",
+      unit: "UN",
+      type: "MATERIAL",
+      taxRate: "10",
+      supplierIds: [supplierId],
+    });
+    const op = await saveOpportunity(db, actorId, {
+      ...base(),
+      notes: "NOTA_INTERNA_NAO_EXPORTAR",
+      items: [
+        { ...base().items[0], winner: true, catalogProductId: product.id },
+      ],
+    });
+    await saveItemPricing(db, actorId, op.id, op.items[0].id, op.version, {
+      supplierId,
+      acquisitionUnit: "1",
+      freightUnit: "0",
+      taxRate: "10",
+      netProfitRate: "20",
+      pricingAdministrativeRate: "5",
+    });
+    const data = await proposalExport(db, op.id, "estimativa");
+    expect(data.itens[0].quantidade).toBe("1.000");
+    expect(data.valorTotal).toBe("1234.56");
+    const text = JSON.stringify(data);
+    for (const key of [
+      "acquisitionUnit",
+      "supplierId",
+      "minimumPrice",
+      "pricingSnapshot",
+      "NOTA_INTERNA_NAO_EXPORTAR",
+    ])
+      expect(text).not.toContain(key);
+    expect(proposalFileText(data, "markdown")).toContain("```json");
+    await expect(proposalExport(db, op.id, "vencedora")).rejects.toThrow(
+      "oferta vencedora",
+    );
+  });
+  it("exporta somente vencedores com oferta exata e mantém total por centavos", async () => {
+    const op = await saveOpportunity(db, actorId, {
+      ...base(),
+      status: "CLASSIFIED",
+      items: [
+        { ...base().items[0], winner: true, quantity: "2" },
+        { ...base().items[0], number: "2", winner: false },
+      ],
+    });
+    await saveWinningPrice(
+      db,
+      actorId,
+      op.id,
+      op.items[0].id,
+      op.version,
+      "100.1250",
+    );
+    const data = await proposalExport(db, op.id, "vencedora");
+    expect(data.itens).toHaveLength(1);
+    expect(data.itens[0].valorUnitario).toBe("100.1250");
+    expect(data.valorTotal).toBe("200.25");
+  });
+});
+
+it("importação resolve CNPJ cadastrado e revalida todas as linhas antes de gravar", async () => {
+  await db.organization.update({
+    where: { id: supplierId },
+    data: { active: true, roles: ["SUPPLIER"], cnpj: "11222333000181" },
+  });
+  const file = importExample("catalogo");
+  file.loteId = `cnpj-${randomUUID()}`;
+  Object.assign(file.itens[0], {
+    fornecedoresCnpj: ["11.222.333/0001-81"],
+    aliquotaTributaria: "10.00",
+  });
+  const text = JSON.stringify(file);
+  const settings = { supplierIds: [], taxRate: null };
+  const p = await previewImport(db, text, "catalogo", undefined, settings);
+  if (!("token" in p)) throw new Error("Prévia esperada");
+  await commitImport(
+    db,
+    actorId,
+    text,
+    "catalogo",
+    undefined,
+    settings,
+    p.token,
+  );
+  expect((await db.catalogSupplier.findFirstOrThrow()).supplierId).toBe(
+    supplierId,
+  );
+  const bad = importExample("catalogo");
+  bad.loteId = `atomic-${randomUUID()}`;
+  Object.assign(bad.itens[0], {
+    descricao: "Primeira linha válida mas não gravada",
+    aliquotaTributaria: "10.00",
+  });
+  bad.itens.push({
+    ...bad.itens[0],
+    codigo: "CAT-002",
+    descricao: "Segunda linha sem alíquota",
+    aliquotaTributaria: null,
+  });
+  await expect(
+    commitImport(
+      db,
+      actorId,
+      JSON.stringify(bad),
+      "catalogo",
+      undefined,
+      { supplierIds: [supplierId], taxRate: null },
+      "0".repeat(64),
+    ),
+  ).rejects.toThrow("alíquota");
+  expect(await db.catalogProduct.count()).toBe(1);
 });

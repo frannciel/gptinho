@@ -58,6 +58,12 @@ export default async function OpportunityDetail({
                 hasContracts={opportunity._count.contracts > 0}
               />
             )}
+            <Link
+              href={`/contratacoes/${id}/exportar`}
+              className="btn-secondary"
+            >
+              Exportar proposta
+            </Link>
             <OpportunityArchive
               id={id}
               reference={opportunity.reference}

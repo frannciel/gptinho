@@ -67,7 +67,7 @@ Não executar reset ou seed de desenvolvimento em produção. Aplicar a migraç�
 
 ## Próximas etapas
 
-Validar este fluxo em produção; depois evoluir cotações com fornecedores e a proposta comercial completa/PDF, pedidos e fornecimentos, faturamento e recebimentos. A Proposta Vencedora desta entrega é o registro dos itens ganhos e de seus valores, não um documento comercial PDF.
+Gestão de cotações foi retirada do MVP. A próxima etapa passou a ser importação/exportação por arquivos para o agente externo preparar a proposta conforme o modelo. Consulte [PLANEJAMENTO.md](PLANEJAMENTO.md). Pedidos/fornecimentos e faturamento/recebimentos permanecem para priorização futura.
 
 ## Validação desta entrega
 

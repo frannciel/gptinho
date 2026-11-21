@@ -54,10 +54,18 @@ export default async function ItemsPage({
         description="Gerencie os itens e marque os vencedores."
         action={
           !p.archived ? (
-            <Link href={`/contratacoes/${id}/itens?new=1`} className="btn">
-              <Plus size={17} />
-              Novo item
-            </Link>
+            <div className="flex flex-wrap gap-3">
+              <Link
+                href={`/contratacoes/${id}/importar`}
+                className="btn-secondary"
+              >
+                Importar JSON
+              </Link>
+              <Link href={`/contratacoes/${id}/itens?new=1`} className="btn">
+                <Plus size={17} />
+                Novo item
+              </Link>
+            </div>
           ) : undefined
         }
       />

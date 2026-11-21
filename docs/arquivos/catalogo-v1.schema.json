@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "versao": {
+      "type": "string",
+      "const": "1.0"
+    },
+    "loteId": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 100,
+      "pattern": "^[A-Za-z0-9._-]+$"
+    },
+    "origem": {
+      "default": null,
+      "anyOf": [
+        {
+          "type": "object",
+          "properties": {
+            "documento": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "referencia": {
+              "default": null,
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": ["documento"],
+          "additionalProperties": false
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "tipo": {
+      "type": "string",
+      "const": "itens_catalogo"
+    },
+    "itens": {
+      "minItems": 1,
+      "maxItems": 100,
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tipo": {
+            "type": "string",
+            "enum": ["MATERIAL", "SERVICO"]
+          },
+          "descricao": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 20000
+          },
+          "marca": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "modelo": {
+            "default": null,
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unidade": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 20
+          },
+          "codigo": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "aliquotaTributaria": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^\\d{1,3}(?:\\.\\d{1,2})?$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fornecedoresCnpj": {
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["tipo", "descricao", "unidade", "codigo"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": ["versao", "loteId", "tipo", "itens"],
+  "additionalProperties": false
+}

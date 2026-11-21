@@ -44,3 +44,7 @@ A nova instrução do usuário substitui a base anterior do percentual apurado: 
 ## Independência do fornecedor da contratação
 
 O usuário determinou que remoção/desativação no catálogo não afete os itens da contratação, principalmente arquivadas. O ID selecionado já era independente no banco; corrige-se a tela que o filtrava e a validação que impedia mantê-lo no recálculo. Novas escolhas permanecem restritas ao catálogo ativo. A identificação do fornecedor passa a integrar o snapshot de novas precificações e é preservada em recálculos com o mesmo fornecedor. Arquivadas continuam imutáveis. Sem nova migration ou regravação automática de dados antigos.
+
+## MVP por arquivos e exclusão de cotações
+
+O usuário retirou gestão de cotações do MVP. O próximo fluxo usa JSON versionado para importar itens de contratação e catálogo extraídos por agente externo e JSON/Markdown para exportar dados necessários à proposta. Não há integração direta com o agente. A carga é aditiva, com prévia e confirmação; dados comerciais não extraíveis do termo são complementados pelo operador. Exportações excluem custos internos e diferenciam referência estimada de oferta vencedora.
