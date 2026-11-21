@@ -1,8 +1,8 @@
 "use client";
+import { ButtonContent } from "./button-content";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Save, LoaderCircle } from "lucide-react";
 import { money } from "@/lib/format";
 import { itemsTotal, normalizeItemDecimal } from "@/lib/contracting-items";
 import { HelpTooltip } from "./help-tooltip";
@@ -322,15 +322,14 @@ export function OpportunityForm({
             if (pending) event.preventDefault();
           }}
         >
-          Cancelar
+          <ButtonContent action="cancel" />
         </Link>
-        <button disabled={pending} className="btn">
-          {pending ? (
-            <LoaderCircle size={17} className="animate-spin" />
-          ) : (
-            <Save size={17} />
-          )}{" "}
-          {pending ? "Salvando…" : "Salvar contratação"}
+        <button
+          disabled={pending}
+          className="btn"
+          aria-label="Salvar contratação"
+        >
+          <ButtonContent action="save" pending={pending} />
         </button>
       </div>
     </form>

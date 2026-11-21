@@ -1,4 +1,5 @@
 "use client";
+import { ButtonContent } from "./button-content";
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Archive, ArchiveRestore } from "lucide-react";
@@ -68,7 +69,7 @@ export function OpportunityArchive({
             className="btn-secondary"
             onClick={() => dialog.current?.close()}
           >
-            Cancelar
+            <ButtonContent action="cancel" />
           </button>
           <button
             type="button"

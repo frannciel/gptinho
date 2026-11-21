@@ -156,3 +156,5 @@ O módulo foi renomeado de Oportunidades para Contratações. Consulte [itens, t
 O catálogo de itens comercializados e a tela específica de itens da contratação estão descritos em [Catálogo e itens](docs/CATALOGO.md), incluindo alterações solicitadas, ordem atualizada das próximas entregas e migração necessária.
 
 A entrega de [precificação e proposta vencedora](docs/PRECIFICACAO.md) acrescenta os novos modais, filtros e fornecedores múltiplos ao catálogo.
+
+Os ajustes de [catálogo, filtros e padrão de ações](docs/CATALOGO_USABILIDADE.md) definem a consulta de ativos/inativos, fornecedores pesquisáveis e a ordenação por criação.

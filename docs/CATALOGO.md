@@ -1,5 +1,7 @@
 # Catálogo e itens das contratações
 
+Os ajustes mais recentes de filtros, fornecedores, ordenação e botões estão em [CATALOGO_USABILIDADE.md](CATALOGO_USABILIDADE.md).
+
 A atualização mais recente de modais, tributos, fornecedores múltiplos, precificação e proposta vencedora está em [PRECIFICACAO.md](PRECIFICACAO.md).
 
 ## Planejamento atualizado

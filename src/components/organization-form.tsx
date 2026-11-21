@@ -1,8 +1,9 @@
 "use client";
+import { ButtonContent } from "./button-content";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, Save, LoaderCircle } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import type { OrganizationInput, ActionResult } from "@/lib/validation";
 import { saveOrganizationAction } from "@/app/(admin)/actions";
 import { MaskedInput } from "./masked-input";
@@ -376,15 +377,10 @@ export function OrganizationForm({
             if (pending) e.preventDefault();
           }}
         >
-          Cancelar
+          <ButtonContent action="cancel" />
         </Link>
-        <button disabled={pending} className="btn">
-          {pending ? (
-            <LoaderCircle size={17} className="animate-spin" />
-          ) : (
-            <Save size={17} />
-          )}
-          {pending ? "Salvando…" : "Salvar cadastro"}
+        <button disabled={pending} className="btn" aria-label="Salvar cadastro">
+          <ButtonContent action="save" pending={pending} />
         </button>
       </div>
     </form>

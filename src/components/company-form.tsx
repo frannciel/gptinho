@@ -1,7 +1,7 @@
 "use client";
+import { ButtonContent } from "./button-content";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Save } from "lucide-react";
 import type { CompanyInput, ActionResult } from "@/lib/validation";
 import { saveCompanyAction } from "@/app/(admin)/actions";
 import { MaskedInput } from "./masked-input";
@@ -104,9 +104,12 @@ export function CompanyForm({
         />
       </fieldset>
       <div className="flex justify-end">
-        <button disabled={pending} className="btn">
-          <Save size={17} />
-          {pending ? "Salvando…" : "Salvar configurações"}
+        <button
+          disabled={pending}
+          className="btn"
+          aria-label="Salvar configurações"
+        >
+          <ButtonContent action="save" pending={pending} />
         </button>
       </div>
     </form>

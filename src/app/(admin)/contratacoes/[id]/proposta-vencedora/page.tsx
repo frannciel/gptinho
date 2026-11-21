@@ -1,3 +1,4 @@
+import { ButtonContent } from "@/components/button-content";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db";
 import { requireAdminPage } from "@/lib/authorization";
@@ -118,7 +119,7 @@ export default async function WinnersPage({
                           className="btn"
                           aria-label={`Salvar proposta do item ${i.number}`}
                         >
-                          Salvar
+                          <ButtonContent action="save" />
                         </button>
                       </ActionForm>
                     )}

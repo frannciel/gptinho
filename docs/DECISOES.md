@@ -28,3 +28,7 @@ O usuário aprovou Contratações com ressalvas e priorizou o catálogo de itens
 ## Revisão do catálogo e precificação
 
 O usuário solicitou modais, Tipo Material/Serviço, alíquota tributária no lugar de Margem e fornecedores múltiplos no catálogo. O custo administrativo sai do catálogo e passa a ser parâmetro percentual da precificação. As margens legadas são preservadas sem conversão em tributos. Foi fornecida fórmula explícita de preço mínimo com denominador positivo; o cálculo usa decimal exato, snapshot e HALF_UP (quatro casas unitárias, duas nos totais). Vencedor é atributo booleano do item e a proposta vencedora registra ofertas unitárias com quatro casas. Classificada é uma situação adicional da contratação.
+
+## Usabilidade e ordenação do catálogo
+
+O usuário solicitou ocultar inativos por padrão com consulta por situação, dropdown de fornecedores em cada produto e criação decrescente nas listas de catálogo, contratações, órgãos e fornecedores. Itens de contratação mantêm numeração crescente. A unidade de novos produtos inicia vazia. A seleção múltipla de fornecedores e o filtro usam consulta paginada no servidor. Labels e ícones das ações de formulário foram centralizados. Não há nova migration.

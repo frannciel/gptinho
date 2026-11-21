@@ -258,7 +258,7 @@ export async function listOpportunities(
         ? [{ estimatedValue: { sort: "desc", nulls: "last" } }, { id: "asc" }]
         : filters.sort === "reference"
           ? [{ reference: "asc" }, { id: "asc" }]
-          : [{ createdAt: "desc" }, { id: "asc" }];
+          : [{ createdAt: "desc" }, { id: "desc" }];
   return db.$transaction(async (tx) => {
     const count = await tx.opportunity.count({ where });
     const pages = Math.max(1, Math.ceil(count / 20));

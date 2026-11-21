@@ -1,6 +1,7 @@
+import { ButtonContent } from "@/components/button-content";
 import Link from "next/link";
 import { Prisma } from "@prisma/client";
-import { Plus, Pencil, Search } from "lucide-react";
+import { Plus, Pencil } from "lucide-react";
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/page-header";
@@ -20,7 +21,9 @@ export default async function CatalogPage({
   const s = Object.fromEntries(
     Object.entries(raw).map(([k, v]) => [k, typeof v === "string" ? v : ""]),
   );
+  const status = s.status === "inactive" ? "inactive" : "active";
   const where: Prisma.CatalogProductWhereInput = {
+    active: status === "active",
     ...(s.q
       ? { description: { contains: s.q.slice(0, 120), mode: "insensitive" } }
       : {}),
@@ -36,19 +39,20 @@ export default async function CatalogPage({
     pages,
     Math.max(1, Number.parseInt(s.page ?? "1", 10) || 1),
   );
-  const [products, suppliers, brands, editing] = await Promise.all([
+  const [products, supplierFilter, brands, editing] = await Promise.all([
     db.catalogProduct.findMany({
       where,
       include: { suppliers: { include: { supplier: true } } },
-      orderBy: [{ description: "asc" }, { id: "asc" }],
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       take: 20,
       skip: (page - 1) * 20,
     }),
-    db.organization.findMany({
-      where: { roles: { has: "SUPPLIER" } },
-      orderBy: { legalName: "asc" },
-      select: { id: true, legalName: true, active: true },
-    }),
+    s.supplierId
+      ? db.organization.findUnique({
+          where: { id: s.supplierId },
+          select: { id: true, legalName: true, active: true },
+        })
+      : null,
     db.catalogProduct.findMany({
       where: { brand: { not: null } },
       select: { brand: true },
@@ -58,12 +62,20 @@ export default async function CatalogPage({
     s.edit
       ? db.catalogProduct.findUnique({
           where: { id: s.edit },
-          include: { suppliers: true },
+          include: {
+            suppliers: {
+              include: {
+                supplier: {
+                  select: { id: true, legalName: true, active: true },
+                },
+              },
+            },
+          },
         })
       : null,
   ]);
   const pageHref = (n: number) =>
-    `/catalogo?${new URLSearchParams({ q: s.q ?? "", type: s.type ?? "", brand: s.brand ?? "", supplierId: s.supplierId ?? "", page: String(n) })}`;
+    `/catalogo?${new URLSearchParams({ q: s.q ?? "", type: s.type ?? "", brand: s.brand ?? "", supplierId: s.supplierId ?? "", status, page: String(n) })}`;
   return (
     <>
       <PageHeader
@@ -87,7 +99,16 @@ export default async function CatalogPage({
       )}
       {s.error && <p role="alert">{s.error}</p>}
       <section className="panel overflow-hidden">
-        <form className="flex flex-wrap items-end gap-3 border-b border-slate-200 p-5">
+        <form
+          key={JSON.stringify({
+            q: s.q ?? "",
+            status,
+            type: s.type ?? "",
+            brand: s.brand ?? "",
+            supplierId: s.supplierId ?? "",
+          })}
+          className="flex flex-wrap items-end gap-3 border-b border-slate-200 p-5"
+        >
           <label className="min-w-48 flex-1 text-xs">
             Buscar item
             <input
@@ -126,28 +147,32 @@ export default async function CatalogPage({
               ))}
             </select>
           </label>
-          <label className="text-xs">
-            Fornecedor
-            <select
-              aria-label="Fornecedor"
+          <div className="min-w-64 max-w-sm">
+            <SupplierMultiselect
+              key={s.supplierId ?? "filter"}
+              multiple={false}
               name="supplierId"
+              includeInactive
+              initial={supplierFilter ? [supplierFilter] : []}
+            />
+          </div>
+          <label className="text-xs">
+            Situação
+            <select
+              aria-label="Situação"
+              name="status"
               className="field mt-1"
-              defaultValue={s.supplierId ?? ""}
+              defaultValue={status}
             >
-              <option value="">Todos</option>
-              {suppliers.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.legalName}
-                </option>
-              ))}
+              <option value="active">Ativo</option>
+              <option value="inactive">Inativo</option>
             </select>
           </label>
           <button className="btn-secondary">
-            <Search size={16} />
-            Filtrar
+            <ButtonContent action="filter" />
           </button>
           <Link href="/catalogo" className="btn-secondary">
-            Limpar
+            <ButtonContent action="clear" />
           </Link>
         </form>
         <div className="overflow-x-auto">
@@ -194,7 +219,21 @@ export default async function CatalogPage({
                     {p.taxRate !== null && "%"}
                   </td>
                   <td className="max-w-xs px-5 py-4">
-                    {p.suppliers.map((s) => s.supplier.legalName).join(", ")}
+                    <select
+                      className="field min-w-48"
+                      aria-label={`Fornecedores de ${p.description}`}
+                      defaultValue=""
+                    >
+                      <option value="" disabled>
+                        {p.suppliers.length} fornecedor(es)
+                      </option>
+                      {p.suppliers.map((s) => (
+                        <option key={s.supplierId} value={s.supplierId}>
+                          {s.supplier.legalName}
+                          {!s.supplier.active ? " (inativo)" : ""}
+                        </option>
+                      ))}
+                    </select>
                   </td>
                   <td className="px-5 py-4">
                     <div className="flex items-center gap-2">
@@ -277,7 +316,7 @@ export default async function CatalogPage({
                 [
                   ["brand", "Marca", editing?.brand, false],
                   ["model", "Modelo", editing?.model, false],
-                  ["unit", "Unidade", editing?.unit ?? "UN", true],
+                  ["unit", "Unidade", editing?.unit ?? "", true],
                   [
                     "taxRate",
                     "Alíquota tributária (%)",
@@ -301,18 +340,15 @@ export default async function CatalogPage({
               ))}
             </div>
             <SupplierMultiselect
-              initial={editing?.suppliers.map((s) => s.supplierId) ?? []}
-              options={suppliers.filter(
-                (p) =>
-                  p.active ||
-                  editing?.suppliers.some((s) => s.supplierId === p.id),
-              )}
+              initial={editing?.suppliers.map((s) => s.supplier) ?? []}
             />
-            <div className="flex justify-end gap-3">
+            <div className="mt-6 flex justify-end gap-3 border-t border-slate-200 pt-5">
               <Link href="/catalogo" className="btn-secondary">
-                Cancelar
+                <ButtonContent action="cancel" />
               </Link>
-              <button className="btn">Salvar item do catálogo</button>
+              <button className="btn" aria-label="Salvar item do catálogo">
+                <ButtonContent action="save" />
+              </button>
             </div>
           </ActionForm>
         </Modal>

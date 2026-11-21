@@ -1,12 +1,6 @@
+import { ButtonContent } from "@/components/button-content";
 import Link from "next/link";
-import {
-  Search,
-  Plus,
-  Pencil,
-  ArrowRight,
-  Landmark,
-  Truck,
-} from "lucide-react";
+import { Search, Plus, Pencil, Landmark, Truck } from "lucide-react";
 import type { OrganizationRole } from "@prisma/client";
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
@@ -72,6 +66,7 @@ export async function OrganizationList({
       )}
       <section className="panel overflow-hidden">
         <form
+          key={JSON.stringify(filters)}
           method="get"
           className="flex flex-wrap items-end gap-3 border-b border-slate-200 p-5"
         >
@@ -114,13 +109,10 @@ export async function OrganizationList({
             </select>
           </div>
           <button className="btn-secondary" type="submit">
-            Filtrar
+            <ButtonContent action="filter" />
           </button>
-          <Link
-            href={base}
-            className="px-2 py-2.5 text-xs font-medium text-slate-500 hover:text-brand-600"
-          >
-            Limpar
+          <Link href={base} className="btn-secondary">
+            <ButtonContent action="clear" />
           </Link>
         </form>
         <div className="flex items-center justify-between px-5 py-4">
@@ -250,12 +242,16 @@ export async function OrganizationList({
               href={
                 filters.q || filters.status !== "active" ? base : `${base}/novo`
               }
-              className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-brand-600"
+              className="btn-secondary mt-6"
             >
-              {filters.q || filters.status !== "active"
-                ? "Limpar filtros"
-                : "Criar primeiro cadastro"}
-              <ArrowRight size={16} />
+              {filters.q || filters.status !== "active" ? (
+                <ButtonContent action="clear" />
+              ) : (
+                <>
+                  <Plus size={17} />
+                  Criar primeiro cadastro
+                </>
+              )}
             </Link>
           </div>
         )}
