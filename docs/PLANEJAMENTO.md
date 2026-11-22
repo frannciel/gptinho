@@ -8,20 +8,40 @@
 - Precificação, ofertas vencedoras e resumo financeiro.
 - Preservação do fornecedor histórico em contratações abertas e arquivadas.
 
-## Entrega atual — arquivos, para validação do usuário
+## Arquivos — implementação concluída
 
-1. Contratos JSON 1.0, exemplos e JSON Schema para catálogo e itens de contratação.
+1. JSON 1.0, exemplos e JSON Schema para catálogo e itens de contratação.
 2. Importação em lote com complementos comerciais, prévia, confirmação, transação, auditoria e proteção contra repetição.
 3. Vínculo de catálogo por lote/código, sem exigir IDs internos do agente.
-4. Exportação privada de dados de proposta em JSON ou Markdown, com campos comerciais públicos necessários e sem custos internos.
-5. Instruções para o agente extrator e para a elaboração externa da proposta.
+4. Exportação privada de dados de proposta em JSON ou Markdown, sem custos internos.
+5. Instruções para extração e elaboração externa da proposta.
+
+## Entrega atual — Contratos e Fornecimento, para validação
+
+1. Escolha de Termo de Contrato ou Nota de Empenho, com atributos específicos.
+2. Negócio comercial único para um Termo e seus empenhos ou múltiplos empenhos sem Termo; saldos compartilhados sem duplicar valores.
+3. Origem opcional na contratação, órgão herdado e cópia dos itens vencedores; cadastro manual sem licitação.
+4. Abas Dados gerais, Pedidos, Notas Fiscais, Garantias e, exclusivamente no Termo, Aditivos.
+5. Pedido com prazo e controle direto de quantidade fornecida acumulada; situação e pendência calculadas. **Não há Entrega, evento ou comprovante de Entrega.**
+6. Faturamento parcial por item, com pedido opcional, e recebimentos parciais no contexto da nota fiscal.
+7. Garantias opcionais e aditivos que preservam originais e snapshots anteriores.
+8. Saldos exatos, limites de quantidade/valor, transações, concorrência e auditoria.
+9. Dashboard com valores contratados, faturados, recebidos e a receber reais, sem dupla contagem dos instrumentos.
+10. Migração expansiva, preservação dos contratos antigos e indicação de complementação cadastral.
+
+Detalhes, diagrama e regras: [CONTRATOS.md](CONTRATOS.md).
 
 ## Escopo confirmado do MVP
 
-**Não haverá gestão de cotações no sistema.** Essa etapa foi removida do MVP e não é pré-requisito para esta entrega.
+**Não haverá gestão de cotações no sistema.** O agente de IA não será conectado ao ERP. Toda comunicação usa arquivos manipulados pelo usuário. A proposta comercial é elaborada externamente a partir dos dados exportados.
 
-O agente de IA não será conectado ao ERP. Importação e exportação usam arquivos entregues manualmente pelo usuário. A exportação do MVP se limita aos dados de apoio à proposta comercial; não é backup geral, exportação financeira ou API de integração com o agente. O documento da proposta será preparado externamente conforme o modelo fornecido.
+Esta entrega não inclui emissão fiscal, XML/NF-e, gestão documental, execução orçamentária do órgão ou integrações automáticas.
 
-## Sequência recomendada
+## Ordem dos próximos passos
 
-Validar os formatos com um termo de referência real e o modelo de proposta, testar a carga em lote e o documento gerado pelo agente. Depois, definir prioridade e escopo de contratos/empenhos, pedidos/fornecimentos e faturamento/recebimentos, já previstos no planejamento anterior. Indicadores e relatórios evoluem conforme esses módulos forem implementados.
+1. Aplicar a nova migration em homologação e validar Termo, empenhos relacionados, pedido parcial, nota parcial, recebimento e aditivo com documentos reais.
+2. Revisar cadastros legados indicados como incompletos; conferir origem e valores antes de iniciar execução.
+3. Concluir a validação dos arquivos de importação e do modelo de proposta com dados reais.
+4. Corrigir os apontamentos dessa validação antes de ampliar o sistema.
+5. Definir com o usuário eventual próxima etapa financeira (despesas/contas a pagar, estornos, conciliação) e relatórios; não foram implementados por antecipação.
+6. Após aprovação, realizar o procedimento autorizado de publicação. Esta implementação não publica produção nem altera o Neon automaticamente.

@@ -78,6 +78,7 @@ async function cleanup() {
   await db.$transaction([
     db.opportunityItem.deleteMany(),
     db.contract.deleteMany(),
+    db.contractCase.deleteMany(),
     db.opportunity.deleteMany(),
     db.catalogProduct.deleteMany(),
     db.auditLog.deleteMany(),
@@ -114,6 +115,7 @@ beforeEach(async () => {
   await db.$transaction([
     db.opportunityItem.deleteMany(),
     db.contract.deleteMany(),
+    db.contractCase.deleteMany(),
     db.opportunity.deleteMany(),
     db.catalogProduct.deleteMany(),
   ]);
@@ -1108,8 +1110,21 @@ describe.sequential("Exclusão de contratação e padrão Em Análise", () => {
     await expect(
       deleteOpportunity(db, actorId, op.id, op.version + 1),
     ).rejects.toThrow("alterada");
+    const root = await db.contractCase.create({
+      data: {
+        reference: "LEGACY-TEST",
+        opportunityId: op.id,
+        organizationId: agencyId,
+        organizationSnapshot: {},
+      },
+    });
     await db.contract.create({
-      data: { opportunityId: op.id, reference: "CONTRATO-01" },
+      data: {
+        opportunityId: op.id,
+        organizationId: agencyId,
+        caseId: root.id,
+        reference: "CONTRATO-TEST",
+      },
     });
     await expect(
       deleteOpportunity(db, actorId, op.id, op.version),

@@ -66,7 +66,8 @@ export async function saveOrganization(
     if (
       id &&
       !data.roles.includes("PUBLIC_AGENCY") &&
-      (await tx.opportunity.count({ where: { organizationId: id } }))
+      ((await tx.opportunity.count({ where: { organizationId: id } })) ||
+        (await tx.contractCase.count({ where: { organizationId: id } })))
     )
       throw new BusinessError(
         "Este órgão possui contratações vinculadas e não pode perder o papel de órgão público. Você pode desativá-lo preservando o histórico.",
