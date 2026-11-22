@@ -167,3 +167,7 @@ A entrega de [resumo financeiro e controle da proposta vencedora](docs/RESUMO_FI
 A atualização de [Em Análise, exclusão protegida e margem sobre receita](docs/CONTRATACOES_EXCLUSAO_MARGEM.md) descreve as migrations mais recentes e os ajustes do Resumo Financeiro.
 
 A correção de [fornecedor histórico da contratação](docs/FORNECEDOR_HISTORICO.md) separa a seleção já registrada das alterações posteriores no catálogo.
+
+## Contratos e Fornecimento
+
+Módulo contextual de Termos de Contrato e Notas de Empenho, com pedidos, notas fiscais, recebimentos, garantias e aditivos. Instruções, regras, diagrama e migração: [docs/CONTRATOS.md](docs/CONTRATOS.md).

@@ -381,7 +381,10 @@ export async function deleteOpportunity(
         throw new BusinessError(
           "A contratação foi alterada. Atualize a página antes de excluir.",
         );
-      if (await tx.contract.count({ where: { opportunityId: id } }))
+      if (
+        (await tx.contract.count({ where: { opportunityId: id } })) ||
+        (await tx.contractCase.count({ where: { opportunityId: id } }))
+      )
         throw new BusinessError(
           "Contratações com contratos associados não podem ser excluídas.",
         );

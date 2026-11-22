@@ -66,6 +66,7 @@ test.afterAll(async () => {
           opportunity: { organizationId: { in: [agencyId].filter(Boolean) } },
         },
       });
+      await tx.contractCase.deleteMany({ where: { organizationId: agencyId } });
       await tx.opportunityItem.deleteMany({
         where: {
           opportunityId: {
@@ -581,8 +582,21 @@ test("exclusão de contratação confirma perda de dados e respeita contratos e 
       subject: "Contratação com contrato associado",
     },
   });
+  const root = await db.contractCase.create({
+    data: {
+      reference: `LEGACY-${suffix}`,
+      opportunityId: linked.id,
+      organizationId: agencyId,
+      organizationSnapshot: {},
+    },
+  });
   await db.contract.create({
-    data: { opportunityId: linked.id, reference: "CONTRATO-E2E" },
+    data: {
+      opportunityId: linked.id,
+      organizationId: agencyId,
+      caseId: root.id,
+      reference: "CONTRATO-TEST",
+    },
   });
   const archived = await db.opportunity.create({
     data: {

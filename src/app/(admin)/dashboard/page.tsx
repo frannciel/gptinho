@@ -13,6 +13,8 @@ import {
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
 import { date, money } from "@/lib/format";
+import { getContractStats } from "@/server/contracts";
+import { fixed } from "@/lib/contracts";
 import { getOpportunityStats } from "@/server/opportunities";
 import { OpportunityMetrics } from "@/components/opportunity-metrics";
 import { dateTime } from "@/lib/opportunity-values";
@@ -20,18 +22,20 @@ import { PageHeader } from "@/components/page-header";
 export const metadata = { title: "Visão geral" };
 export default async function Dashboard() {
   const user = await requireAdminPage();
-  const [[agencies, suppliers, recent], opportunityStats] = await Promise.all([
-    db.$transaction([
-      db.organization.count({
-        where: { roles: { has: "PUBLIC_AGENCY" }, active: true },
-      }),
-      db.organization.count({
-        where: { roles: { has: "SUPPLIER" }, active: true },
-      }),
-      db.organization.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
-    ]),
-    getOpportunityStats(db),
-  ]);
+  const [[agencies, suppliers, recent], opportunityStats, contractStats] =
+    await Promise.all([
+      db.$transaction([
+        db.organization.count({
+          where: { roles: { has: "PUBLIC_AGENCY" }, active: true },
+        }),
+        db.organization.count({
+          where: { roles: { has: "SUPPLIER" }, active: true },
+        }),
+        db.organization.findMany({ orderBy: { createdAt: "desc" }, take: 5 }),
+      ]),
+      getOpportunityStats(db),
+      getContractStats(db),
+    ]);
   return (
     <>
       <PageHeader
@@ -115,9 +119,11 @@ export default async function Dashboard() {
                 <Icon size={20} />
               </div>
               <p className="mt-5 text-sm text-slate-500">{label}</p>
-              <p className="mt-1 text-3xl font-bold tracking-tight">0</p>
+              <p className="mt-1 text-3xl font-bold tracking-tight">
+                {contractStats.orders}
+              </p>
               <p className="mt-3 text-xs text-slate-400">
-                Módulo previsto · sem lançamentos
+                Pedidos pendentes ou parcialmente fornecidos
               </p>
             </div>
           ),
@@ -242,35 +248,39 @@ export default async function Dashboard() {
             <h2 className="font-semibold">Resumo comercial</h2>
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            Os módulos comerciais e financeiros serão disponibilizados em
-            próximas entregas.
+            Valores apurados a partir dos negócios comerciais, notas fiscais e
+            recebimentos registrados. Termos e empenhos vinculados não duplicam
+            o valor contratado.
           </p>
           <dl className="mt-5 divide-y divide-slate-100">
             {[
-              "Propostas enviadas",
-              "Valor contratado",
-              "Valor faturado",
-              "Saldo a receber",
-            ].map((label, i) => (
-              <div key={label} className="flex justify-between gap-3 py-3.5">
-                <dt className="text-sm text-slate-500">{label}</dt>
+              ["Valor contratado", contractStats.contracted],
+              ["Valor faturado", contractStats.invoiced],
+              ["Valor recebido", contractStats.received],
+              ["Saldo a receber", contractStats.receivable],
+            ].map(([label, value]) => (
+              <div
+                key={String(label)}
+                className="flex justify-between gap-3 py-3.5"
+              >
+                <dt className="text-sm text-slate-500">{String(label)}</dt>
                 <dd className="text-sm font-semibold">
-                  {i === 0 ? "0" : money("0.00")}
+                  {money(fixed(value as bigint, 2))}
                 </dd>
               </div>
             ))}
           </dl>
           <p className="mt-4 rounded-lg bg-slate-50 p-3 text-xs leading-5 text-slate-500">
-            Sem lançamentos nesta etapa. Os valores acima não representam uma
-            apuração financeira.
+            Cadastros legados sem valor informado precisam ser completados para
+            integrar o total contratado.
           </p>
         </section>
       </div>
       <section className="mt-7">
         <h2 className="text-sm font-semibold">O caminho da sua operação</h2>
         <p className="mt-1 text-xs text-slate-500">
-          Fluxo da operação. Contratações já disponíveis; demais módulos em
-          próximas entregas.
+          Fluxo operacional disponível no Govnex. Propostas são elaboradas
+          externamente a partir da exportação de dados.
         </p>
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {[

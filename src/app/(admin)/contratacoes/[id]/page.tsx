@@ -64,6 +64,12 @@ export default async function OpportunityDetail({
             >
               Exportar proposta
             </Link>
+            <Link
+              href={`/contratos?q=${encodeURIComponent(opportunity.reference)}`}
+              className="btn-secondary"
+            >
+              Contratos
+            </Link>
             <OpportunityArchive
               id={id}
               reference={opportunity.reference}
