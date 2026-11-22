@@ -11,7 +11,7 @@ export async function contractAction(
   id?: string,
   version?: number,
   recordId?: string,
-): Promise<ActionResult & { id?: string }> {
+): Promise<ActionResult & { id?: string; warning?: string }> {
   try {
     const actor = await requireAdmin();
     let resultId = id;
@@ -112,18 +112,12 @@ export async function contractAction(
           throw new BusinessError("Operação inválida.");
       }
     }
-    const current = resultId
-      ? await db.contract.findUnique({
-          where: { id: resultId },
-          select: { caseId: true },
-        })
-      : null;
-    const siblings = current
-      ? await db.contract.findMany({
-          where: { caseId: current.caseId },
-          select: { id: true },
-        })
-      : [];
+    const current = resultId ? await contracts.getContract(db, resultId) : null;
+    const siblings = current?.case.instruments ?? [];
+    const warning =
+      current && !contracts.contractValueCheck(current.case, current.id).matches
+        ? "O valor do instrumento diverge do total dos itens. Confira os valores."
+        : undefined;
     for (const path of [
       "/contratos",
       "/dashboard",
@@ -131,7 +125,12 @@ export async function contractAction(
       ...siblings.map((i) => `/contratos/${i.id}`),
     ])
       revalidatePath(path);
-    return { ok: true, message: "Registro salvo com sucesso.", id: resultId };
+    return {
+      ok: true,
+      message: "Registro salvo com sucesso.",
+      id: resultId,
+      warning,
+    };
   } catch (error) {
     if (error instanceof AccessError)
       return { ok: false, message: error.message };

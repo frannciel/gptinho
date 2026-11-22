@@ -7,6 +7,8 @@ import {
   fixed,
   orderStatus,
   lineValue,
+  reconcileContractValue,
+  invoiceSchema,
 } from "@/lib/contracts";
 describe("Contratos: precisão, datas e modalidades", () => {
   it("aceita valores brasileiros e quatro casas sem arredondar o cadastro", () => {
@@ -54,5 +56,46 @@ describe("Contratos: precisão, datas e modalidades", () => {
     expect(orderStatus(false, row("1"))).toBe("Parcialmente fornecido");
     expect(orderStatus(false, row("3"))).toBe("Fornecido");
     expect(orderStatus(true, row("3"))).toBe("Cancelado");
+  });
+  it("confere centavos por linha sem ponto flutuante", () => {
+    expect(
+      reconcileContractValue("0.38", [
+        { quantity: "3.000", unitPrice: "0.1250" },
+      ]),
+    ).toEqual({ matches: true, total: "0.38", declared: "0.38" });
+    expect(
+      reconcileContractValue("0.39", [{ quantity: "3", unitPrice: "0.1250" }])
+        .matches,
+    ).toBe(false);
+  });
+  it("Termo não exige emissão e empenho substitutivo exige sua própria emissão", () => {
+    const term = {
+      instrumentType: "TERM",
+      reference: "CT",
+      amount: "100",
+      status: "DRAFT",
+      signatureDate: "2026-11-01",
+      validFrom: "2026-11-01",
+      validUntil: "2027-11-01",
+    };
+    expect(instrumentSchema.safeParse(term).success).toBe(true);
+    expect(
+      instrumentSchema.safeParse({ ...term, instrumentType: "COMMITMENT" })
+        .success,
+    ).toBe(false);
+  });
+  it("chave da NF é opcional e alfanumérica sem impor 44 dígitos", () => {
+    const base = {
+      reference: "NF",
+      issueDate: "2026-11-01",
+      items: [{ contractItemId: "ck123456789012345678901234", quantity: "1" }],
+    };
+    expect(
+      invoiceSchema.safeParse({ ...base, accessKey: "AbC123" }).success,
+    ).toBe(true);
+    expect(invoiceSchema.safeParse(base).success).toBe(true);
+    expect(
+      invoiceSchema.safeParse({ ...base, accessKey: "123-456" }).success,
+    ).toBe(false);
   });
 });

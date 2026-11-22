@@ -4,11 +4,11 @@ import { BusinessError } from "./errors";
 import { idSchema } from "./validation";
 export const instrumentTypes = {
   TERM: "Termo de Contrato",
-  COMMITMENT: "Nota de Empenho",
+  COMMITMENT: "Empenho substitutivo",
 } as const;
 export const instrumentStatuses = {
   DRAFT: "Em preparação",
-  ACTIVE: "Em andamento",
+  ACTIVE: "Em execução",
   CLOSED: "Encerrado",
   CANCELLED: "Cancelado",
 } as const;
@@ -77,7 +77,7 @@ export const instrumentSchema = z
   .object({
     instrumentType: z.enum(["TERM", "COMMITMENT"]),
     reference: shortText,
-    issuedAt: day,
+    issuedAt: optionalDay,
     amount: decimal(2),
     status: z.enum(["DRAFT", "ACTIVE", "CLOSED", "CANCELLED"]),
     signatureDate: optionalDay,
@@ -87,6 +87,7 @@ export const instrumentSchema = z
     supplyDeadline: optionalDay,
     parentTermId: optionalId,
     documentUrl,
+    publicationUrl: documentUrl,
     notes: optionalText,
   })
   .superRefine((v, c) => {
@@ -105,11 +106,18 @@ export const instrumentSchema = z
         path: ["validUntil"],
         message: "Fim da vigência anterior ao início.",
       });
-    if (v.instrumentType === "TERM" && v.parentTermId)
+    if (v.instrumentType === "COMMITMENT" && !v.issuedAt)
+      c.addIssue({
+        code: "custom",
+        path: ["issuedAt"],
+        message: "Informe a data de emissão do empenho substitutivo.",
+      });
+    if (v.parentTermId)
       c.addIssue({
         code: "custom",
         path: ["parentTermId"],
-        message: "Somente empenhos podem vincular um Termo.",
+        message:
+          "Empenhos contábeis devem ser registrados nos Pedidos, sem vincular outro contrato.",
       });
   });
 export const contractItemSchema = z.object({
@@ -124,6 +132,13 @@ export const contractItemSchema = z.object({
 });
 export const orderSchema = z.object({
   reference: optionalText,
+  commitmentNumber: z
+    .string()
+    .trim()
+    .max(200)
+    .default("")
+    .transform((v) => v || null),
+  commitmentIssuedAt: optionalDay,
   orderDate: day,
   deadline: optionalDay,
   notes: optionalText,
@@ -134,6 +149,16 @@ export const orderSchema = z.object({
 });
 export const invoiceSchema = z.object({
   reference: shortText,
+  accessKey: z
+    .string()
+    .trim()
+    .max(100, "Use até 100 caracteres.")
+    .regex(
+      /^[A-Za-z0-9]*$/,
+      "A chave de acesso deve conter apenas letras e números.",
+    )
+    .default("")
+    .transform((v) => v || null),
   issueDate: day,
   orderId: optionalId,
   documentUrl,
@@ -218,4 +243,31 @@ export function lineValue(quantity: string, unitPrice: string) {
       "O total do item excede o limite monetário permitido.",
     );
   }
+}
+
+export function reconcileContractValue(
+  amount: { toString(): string } | string | null,
+  items: {
+    quantity: { toString(): string } | string;
+    unitPrice: { toString(): string } | string;
+  }[],
+) {
+  const total = items.reduce(
+    (sum, item) =>
+      sum +
+      units(
+        lineValue(
+          fixed(units(item.quantity, 3), 3),
+          fixed(units(item.unitPrice, 4), 4),
+        ),
+        2,
+      ),
+    0n,
+  );
+  const declared = amount === null ? null : units(amount, 2);
+  return {
+    total: fixed(total, 2),
+    declared: declared === null ? null : fixed(declared, 2),
+    matches: declared !== null && declared === total,
+  };
 }
