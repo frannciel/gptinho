@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
-import { listContracts } from "@/server/contracts";
+import { listContracts, contractValueCheck } from "@/server/contracts";
 import { instrumentTypes, instrumentStatuses } from "@/lib/contracts";
 import { money } from "@/lib/format";
 import { PageHeader } from "@/components/page-header";
@@ -11,19 +11,21 @@ export const metadata = { title: "Contratos" };
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; page?: string }>;
+  searchParams: Promise<{ q?: string; page?: string; revisar?: string }>;
 }) {
   await requireAdminPage();
   const params = await searchParams;
   const q = (params.q ?? "").slice(0, 200);
   const page = Math.min(100000, Math.max(1, Number(params.page) || 1));
-  const { rows, count } = await listContracts(db, q, Math.floor(page));
+  const review = params.revisar === "1";
+  const { rows, count } = await listContracts(db, q, Math.floor(page), review);
+  const legacy = await db.contract.count({ where: { instrumentType: null } });
   return (
     <>
       <PageHeader
         title="Contratos"
         eyebrow="Execução comercial"
-        description="Termos de Contrato e Notas de Empenho, pedidos, faturamento e recebimentos."
+        description="Termos de Contrato e Empenhos substitutivos, pedidos, faturamento e recebimentos."
         action={
           <Link href="/contratos/novo" className="btn">
             <Plus size={17} />
@@ -32,13 +34,14 @@ export default async function Page({
         }
       />
       <form className="panel mb-6 flex flex-wrap items-end gap-3 p-5">
+        {review && <input type="hidden" name="revisar" value="1" />}
         <label className="min-w-56 flex-1">
           Buscar instrumento
           <input
             className="field"
             name="q"
             defaultValue={q}
-            placeholder="Número, órgão ou identificação gerencial"
+            placeholder="Número do contrato, órgão ou contratação de origem"
           />
         </label>
         <button className="btn">
@@ -56,7 +59,6 @@ export default async function Page({
                 "Instrumento",
                 "Número",
                 "Órgão público",
-                "Negócio comercial",
                 "Valor original",
                 "Situação",
                 "Ações",
@@ -75,13 +77,15 @@ export default async function Page({
                 </td>
                 <td className="font-semibold">{i.reference}</td>
                 <td>{i.organization.legalName}</td>
-                <td className="max-w-40 truncate" title={i.case.reference}>
-                  {i.case.reference}
-                </td>
                 <td>
                   {i.amount !== null
                     ? money(i.amount.toFixed(2))
                     : "Não informado"}
+                  {!contractValueCheck(i.case, i.id).matches && (
+                    <p className="text-xs text-amber-800" role="status">
+                      Valor divergente dos itens
+                    </p>
+                  )}
                 </td>
                 <td>{instrumentStatuses[i.status]}</td>
                 <td>
@@ -93,7 +97,7 @@ export default async function Page({
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={7} className="py-12 text-center text-slate-500">
+                <td colSpan={6} className="py-12 text-center text-slate-500">
                   Nenhum contrato encontrado.
                 </td>
               </tr>
@@ -109,7 +113,7 @@ export default async function Page({
           {page > 1 && (
             <Link
               className="btn-secondary"
-              href={`?q=${encodeURIComponent(q)}&page=${page - 1}`}
+              href={`?revisar=${review ? "1" : "0"}&q=${encodeURIComponent(q)}&page=${page - 1}`}
             >
               Anterior
             </Link>
@@ -117,17 +121,24 @@ export default async function Page({
           {page * 25 < count && (
             <Link
               className="btn-secondary"
-              href={`?q=${encodeURIComponent(q)}&page=${page + 1}`}
+              href={`?revisar=${review ? "1" : "0"}&q=${encodeURIComponent(q)}&page=${page + 1}`}
             >
               Próxima
             </Link>
           )}
         </div>
       </div>
-      <p className="mt-4 text-xs text-slate-500">
-        Os valores dos instrumentos não devem ser somados: Termo e empenhos
-        relacionados compartilham um único negócio comercial.
-      </p>
+      {legacy > 0 && (
+        <p className="mt-4 text-sm text-amber-900">
+          {legacy} cadastro(s) legado(s) sem classificação.{" "}
+          <Link
+            className="underline"
+            href={review ? "/contratos" : "/contratos?revisar=1"}
+          >
+            {review ? "Voltar aos contratos" : "Revisar cadastros legados"}
+          </Link>
+        </p>
+      )}
     </>
   );
 }

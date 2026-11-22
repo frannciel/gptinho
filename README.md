@@ -170,4 +170,4 @@ A correção de [fornecedor histórico da contratação](docs/FORNECEDOR_HISTORI
 
 ## Contratos e Fornecimento
 
-Módulo contextual de Termos de Contrato e Notas de Empenho, com pedidos, notas fiscais, recebimentos, garantias e aditivos. Instruções, regras, diagrama e migração: [docs/CONTRATOS.md](docs/CONTRATOS.md).
+Módulo contextual de Termos de Contrato e Empenhos substitutivos independentes, com empenhos contábeis registrados nos Pedidos, notas fiscais, recebimentos, garantias e aditivos. Instruções, regras, diagrama e migração: [docs/CONTRATOS.md](docs/CONTRATOS.md).

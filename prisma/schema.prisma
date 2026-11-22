@@ -288,6 +288,8 @@ model Contract {
   parentTermId        String?
   parentTerm          Contract?           @relation("LinkedCommitments", fields: [parentTermId, caseId], references: [id, caseId], onDelete: Restrict, onUpdate: NoAction)
   commitments         Contract[]          @relation("LinkedCommitments")
+  substitutive        Boolean             @default(true)
+  publicationUrl      String?
   instrumentType      InstrumentType?
   reference           String
   issuedAt            DateTime?           @db.Date
@@ -337,20 +339,22 @@ model ContractItem {
 }
 
 model SupplyOrder {
-  id           String            @id @default(cuid())
-  caseId       String
-  case         ContractCase      @relation(fields: [caseId], references: [id], onDelete: Restrict)
-  instrumentId String
-  instrument   Contract          @relation(fields: [instrumentId, caseId], references: [id, caseId], onDelete: Restrict)
-  reference    String?
-  orderDate    DateTime          @db.Date
-  deadline     DateTime?         @db.Date
-  cancelled    Boolean           @default(false)
-  notes        String?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  items        SupplyOrderItem[]
-  invoices     SalesInvoice[]
+  id                 String            @id @default(cuid())
+  caseId             String
+  case               ContractCase      @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  instrumentId       String
+  instrument         Contract          @relation(fields: [instrumentId, caseId], references: [id, caseId], onDelete: Restrict)
+  reference          String?
+  commitmentNumber   String?
+  commitmentIssuedAt DateTime?         @db.Date
+  orderDate          DateTime          @db.Date
+  deadline           DateTime?         @db.Date
+  cancelled          Boolean           @default(false)
+  notes              String?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  items              SupplyOrderItem[]
+  invoices           SalesInvoice[]
 
   @@unique([id, caseId])
   @@index([caseId])
@@ -380,6 +384,7 @@ model SalesInvoice {
   orderId      String?
   order        SupplyOrder?       @relation(fields: [orderId, caseId], references: [id, caseId], onDelete: Restrict)
   reference    String
+  accessKey    String?
   issueDate    DateTime           @db.Date
   amount       Decimal            @db.Decimal(18, 2)
   cancelled    Boolean            @default(false)

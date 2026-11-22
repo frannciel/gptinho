@@ -248,9 +248,9 @@ export default async function Dashboard() {
             <h2 className="font-semibold">Resumo comercial</h2>
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-500">
-            Valores apurados a partir dos negócios comerciais, notas fiscais e
-            recebimentos registrados. Termos e empenhos vinculados não duplicam
-            o valor contratado.
+            Valores apurados a partir dos contratos, notas fiscais e
+            recebimentos registrados. Termos e Empenhos substitutivos são
+            acompanhados como contratos independentes.
           </p>
           <dl className="mt-5 divide-y divide-slate-100">
             {[

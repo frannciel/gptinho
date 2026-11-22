@@ -16,6 +16,7 @@ import {
   bounded,
   lineValue,
   decimal,
+  reconcileContractValue,
 } from "@/lib/contracts";
 const caseInclude = {
   organization: true,
@@ -52,7 +53,7 @@ function assertActive(c: ContractAggregate, id: string) {
   const i = c.instruments.find((i) => i.id === id);
   if (!i?.instrumentType || i.amount === null || i.status !== "ACTIVE")
     throw new BusinessError(
-      "Complete o instrumento e defina a situação Em andamento para registrar esta operação.",
+      "Complete o instrumento e defina a situação Em execução para registrar esta operação.",
     );
   return i;
 }
@@ -188,7 +189,11 @@ async function mutate<T>(
       const instrument = await tx.contract.findUnique({
         where: { id: instrumentId },
       });
-      if (!instrument) throw new BusinessError("Instrumento não encontrado.");
+      if (
+        !instrument ||
+        (instrument.instrumentType === "COMMITMENT" && !instrument.substitutive)
+      )
+        throw new BusinessError("Contrato não encontrado.");
       if (instrument.opportunityId)
         await tx.$queryRaw`SELECT "id" FROM "Opportunity" WHERE "id"=${instrument.opportunityId} FOR UPDATE`;
       await tx.$queryRaw`SELECT "id" FROM "ContractCase" WHERE "id"=${instrument.caseId} FOR UPDATE`;
@@ -197,6 +202,17 @@ async function mutate<T>(
         include: caseInclude,
       });
       if (c.version !== version) throw conflict();
+      if (
+        action !== "CREATE_RECEIPT" &&
+        c.instruments.filter(
+          (i) =>
+            i.instrumentType === "TERM" ||
+            (i.instrumentType === "COMMITMENT" && i.substitutive),
+        ).length > 1
+      )
+        throw new BusinessError(
+          "Este cadastro legado compartilha itens entre contratos. Revise a separação dos registros antes de novos lançamentos; o histórico foi preservado.",
+        );
       const result = await run(tx, c);
       const after = await tx.contractCase.findUniqueOrThrow({
         where: { id: c.id },
@@ -230,26 +246,11 @@ export async function createContract(
     async (tx) => {
       const { instrument, ...data } = parsed;
       let c: ContractAggregate;
-      if (data.caseId) {
-        await tx.$queryRaw`SELECT "id" FROM "ContractCase" WHERE "id"=${data.caseId} FOR UPDATE`;
-        c = await tx.contractCase.findUniqueOrThrow({
-          where: { id: data.caseId },
-          include: caseInclude,
-        });
-        if (
-          instrument.instrumentType === "TERM" &&
-          c.instruments.some((i) => i.instrumentType === "TERM")
-        )
-          throw new BusinessError(
-            "Este negócio já possui um Termo de Contrato.",
-          );
-        if (data.items.length)
-          throw new BusinessError(
-            "O instrumento vinculado utiliza os itens já cadastrados no negócio.",
-          );
-      } else {
-        if (instrument.parentTermId)
-          throw new BusinessError("Selecione o negócio do Termo vinculado.");
+      if (data.caseId || instrument.parentTermId)
+        throw new BusinessError(
+          "Cada Termo ou Empenho substitutivo deve ser cadastrado de forma independente. Registre empenhos contábeis nos Pedidos.",
+        );
+      {
         const initialSource = data.opportunityId
           ? await tx.opportunity.findUnique({
               where: { id: data.opportunityId },
@@ -332,21 +333,14 @@ export async function createContract(
           });
         }
       }
-      if (
-        instrument.parentTermId &&
-        !c.instruments.some(
-          (i) =>
-            i.id === instrument.parentTermId &&
-            i.instrumentType === "TERM" &&
-            i.status !== "CANCELLED",
-        )
-      )
-        throw new BusinessError(
-          "O Termo deve pertencer ao mesmo negócio e não estar cancelado.",
-        );
       const payload =
         instrument.instrumentType === "TERM"
-          ? { ...instrument, supplyDeadline: null }
+          ? {
+              ...instrument,
+              issuedAt: null,
+              commitmentReference: null,
+              supplyDeadline: null,
+            }
           : {
               ...instrument,
               signatureDate: null,
@@ -413,21 +407,16 @@ export async function updateContract(
         throw new BusinessError(
           "Altere a vigência por aditivo; preserve o período original.",
         );
-      if (
-        value.parentTermId &&
-        !c.instruments.some(
-          (i) =>
-            i.id === value.parentTermId &&
-            i.instrumentType === "TERM" &&
-            i.status !== "CANCELLED",
-        )
-      )
-        throw new BusinessError("Termo vinculado inválido.");
       return tx.contract.update({
         where: { id },
         data:
           value.instrumentType === "TERM"
-            ? { ...value, supplyDeadline: null }
+            ? {
+                ...value,
+                issuedAt: old.issuedAt,
+                commitmentReference: old.commitmentReference,
+                supplyDeadline: null,
+              }
             : {
                 ...value,
                 signatureDate: null,
@@ -484,7 +473,15 @@ export async function createOrder(
   const value = orderSchema.parse(input);
   unique(value.items.map((i) => i.contractItemId));
   return mutate(db, actorId, id, version, "CREATE_ORDER", async (tx, c) => {
-    assertActive(c, id);
+    const instrument = c.instruments.find((i) => i.id === id)!;
+    if (!instrument.instrumentType || instrument.amount === null)
+      throw new BusinessError(
+        "Complete os dados do contrato antes de cadastrar o Pedido.",
+      );
+    if (instrument.status === "CLOSED" || instrument.status === "CANCELLED")
+      throw new BusinessError(
+        "Contrato encerrado ou cancelado não permite novos Pedidos.",
+      );
     const b = contractBalances(c);
     for (const row of value.items) {
       const item = b.items.find((i) => i.id === row.contractItemId);
@@ -494,9 +491,19 @@ export async function createOrder(
         );
     }
     const { items, ...header } = value;
+    if (instrument.status === "DRAFT")
+      await tx.contract.update({ where: { id }, data: { status: "ACTIVE" } });
     return tx.supplyOrder.create({
       data: {
         ...header,
+        commitmentNumber:
+          instrument.instrumentType === "COMMITMENT"
+            ? (header.commitmentNumber ?? instrument.reference)
+            : header.commitmentNumber,
+        commitmentIssuedAt:
+          instrument.instrumentType === "COMMITMENT"
+            ? (header.commitmentIssuedAt ?? instrument.issuedAt)
+            : header.commitmentIssuedAt,
         caseId: c.id,
         instrumentId: id,
         items: {
@@ -767,21 +774,50 @@ export async function cancelAmendment(
 }
 export async function getContract(db: PrismaClient, id: string) {
   if (!idSchema.safeParse(id).success) return null;
-  return db.contract.findUnique({
-    where: { id },
+  return db.contract.findFirst({
+    where: {
+      id,
+      OR: [
+        { instrumentType: { not: "COMMITMENT" } },
+        { instrumentType: null },
+        { instrumentType: "COMMITMENT", substitutive: true },
+      ],
+    },
     include: { case: { include: caseInclude } },
   });
+}
+export function contractValueCheck(c: ContractAggregate, id: string) {
+  const instrument = c.instruments.find((i) => i.id === id)!;
+  const b = contractBalances(c);
+  const amount =
+    instrument.instrumentType === "TERM"
+      ? fixed(
+          units(instrument.amount ?? "0", 2) +
+            c.amendments
+              .filter((a) => !a.cancelled && a.instrumentId === id)
+              .reduce((s, a) => s + units(a.valueDelta, 2), 0n),
+          2,
+        )
+      : instrument.amount;
+  return reconcileContractValue(
+    amount,
+    b.items.map((i) => ({
+      quantity: i.effectiveQuantity,
+      unitPrice: i.effectivePrice,
+    })),
+  );
 }
 export async function listContracts(
   db: PrismaClient,
   query: string = "",
   page = 1,
+  review = false,
 ) {
-  const where: Prisma.ContractWhereInput = query
+  const search: Prisma.ContractWhereInput = query
     ? {
         OR: [
           { reference: { contains: query, mode: "insensitive" } },
-          { case: { reference: { contains: query, mode: "insensitive" } } },
+
           {
             case: {
               opportunity: {
@@ -797,10 +833,23 @@ export async function listContracts(
         ],
       }
     : {};
+  const where: Prisma.ContractWhereInput = {
+    AND: [
+      search,
+      review
+        ? { instrumentType: null }
+        : {
+            OR: [
+              { instrumentType: "TERM" },
+              { instrumentType: "COMMITMENT", substitutive: true },
+            ],
+          },
+    ],
+  };
   const [rows, count] = await db.$transaction([
     db.contract.findMany({
       where,
-      include: { organization: true, case: { select: { reference: true } } },
+      include: { organization: true, case: { include: caseInclude } },
       orderBy: { createdAt: "desc" },
       take: 25,
       skip: (page - 1) * 25,

@@ -5,7 +5,7 @@ import { ContractForm } from "@/components/contract-form";
 import { PageHeader } from "@/components/page-header";
 export default async function Page() {
   await requireAdminPage();
-  const [agencies, sources, cases] = await Promise.all([
+  const [agencies, sources] = await Promise.all([
     db.organization.findMany({
       where: { active: true, roles: { has: "PUBLIC_AGENCY" } },
       orderBy: { legalName: "asc" },
@@ -27,13 +27,6 @@ export default async function Page() {
             },
           },
         },
-      },
-    }),
-    db.contractCase.findMany({
-      orderBy: { createdAt: "desc" },
-      include: {
-        organization: { select: { legalName: true } },
-        instruments: true,
       },
     }),
   ]);
@@ -68,16 +61,6 @@ export default async function Page() {
                 unitPrice: item.winningUnitPrice!.toFixed(4),
               }))
               .filter((item) => units(item.quantity, 3) > 0n),
-          }))}
-          cases={cases.map((c) => ({
-            id: c.id,
-            label: `${c.instruments.find((i) => i.instrumentType === "TERM")?.reference ?? c.instruments[0]?.reference ?? c.reference} · ${c.organization.legalName}`,
-            organizationId: c.organizationId,
-            hasTerm: c.instruments.some((i) => i.instrumentType === "TERM"),
-            termId:
-              c.instruments.find(
-                (i) => i.instrumentType === "TERM" && i.status !== "CANCELLED",
-              )?.id ?? null,
           }))}
         />
       </section>

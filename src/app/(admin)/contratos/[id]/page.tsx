@@ -4,7 +4,11 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
-import { getContract, contractBalances } from "@/server/contracts";
+import {
+  getContract,
+  contractBalances,
+  contractValueCheck,
+} from "@/server/contracts";
 import {
   instrumentTypes,
   instrumentStatuses,
@@ -53,7 +57,11 @@ function Field({
 function Notes() {
   return (
     <>
-      <Field name="documentUrl" label="Link do documento" type="url" />
+      <Field
+        name="documentUrl"
+        label="Link do diretório ou documento"
+        type="url"
+      />
       <label>
         Observações
         <textarea className="field" rows={2} name="notes" />
@@ -126,6 +134,7 @@ export default async function Page({
   const c = contract.case,
     b = contractBalances(c);
   const version = c.version;
+  const check = contractValueCheck(c, id);
   const isTerm = contract.instrumentType === "TERM";
   const tabs = [
     ["geral", "Dados gerais"],
@@ -263,9 +272,31 @@ export default async function Page({
           instrumento antes de iniciar a execução.
         </p>
       )}
+      {!check.matches && (
+        <p
+          role="alert"
+          className="mb-5 rounded-lg bg-amber-50 p-4 text-sm text-amber-900"
+        >
+          Valor divergente: valor vigente do instrumento{" "}
+          {money(check.declared ?? "0.00")}; total dos itens{" "}
+          {money(check.total)}. Os valores devem coincidir até os centavos.
+          Confira o valor e os itens cadastrados.
+        </p>
+      )}
+      {c.instruments.filter(
+        (i) =>
+          i.instrumentType === "TERM" ||
+          (i.instrumentType === "COMMITMENT" && i.substitutive),
+      ).length > 1 && (
+        <p role="alert" className="mb-5 rounded-lg bg-amber-50 p-4 text-sm">
+          Cadastro legado com itens compartilhados entre contratos. Histórico
+          preservado; a separação precisa ser revisada antes de novos
+          lançamentos.
+        </p>
+      )}
       <section className="panel mb-6 grid gap-5 p-5 sm:grid-cols-4">
         {[
-          ["Valor vigente do negócio", b.value],
+          ["Valor vigente do contrato", b.value],
           ["Faturado", b.invoiced],
           ["Recebido", b.received],
           ["Saldo a receber", b.receivable],
@@ -278,9 +309,7 @@ export default async function Page({
           </div>
         ))}
         <p className="text-xs text-slate-500 sm:col-span-4">
-          Negócio {c.reference} · Valores compartilhados entre Termo e empenhos
-          vinculados. Não somar os instrumentos. Saldo a faturar:{" "}
-          {money(fixed(b.remaining, 2))}.
+          Saldo a faturar: {money(fixed(b.remaining, 2))}.
         </p>
       </section>
       <nav
@@ -307,7 +336,14 @@ export default async function Page({
                 <dl className="mt-4 space-y-2 text-sm">
                   {[
                     ["Situação", instrumentStatuses[contract.status]],
-                    ["Data", date(contract.issuedAt)],
+                    ...(!isTerm
+                      ? [
+                          [
+                            "Data de emissão do empenho",
+                            date(contract.issuedAt),
+                          ],
+                        ]
+                      : []),
                     [
                       "Valor original",
                       contract.amount !== null
@@ -325,10 +361,6 @@ export default async function Page({
                             "Vigência atual",
                             `${date(contract.validFrom)} a ${date(effectiveEnd)}`,
                           ],
-                          [
-                            "Referência de empenho",
-                            contract.commitmentReference ?? "Não informada",
-                          ],
                         ]
                       : [
                           [
@@ -343,6 +375,16 @@ export default async function Page({
                     </div>
                   ))}
                 </dl>
+                {contract.publicationUrl && (
+                  <a
+                    className="mt-4 block text-brand-700 underline"
+                    href={contract.publicationUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Abrir publicação
+                  </a>
+                )}
                 {contract.documentUrl && (
                   <a
                     className="mt-4 inline-block text-brand-700 underline"
@@ -350,7 +392,7 @@ export default async function Page({
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Abrir documento
+                    Abrir diretório ou documento
                   </a>
                 )}
                 {contract.notes && (
@@ -360,31 +402,7 @@ export default async function Page({
                 )}
               </div>
               <div>
-                <h2 className="font-semibold">Instrumentos do mesmo negócio</h2>
-                <ul className="mt-4 space-y-3 text-sm">
-                  {c.instruments.map((i) => (
-                    <li key={i.id}>
-                      <Link
-                        className="text-brand-700 underline"
-                        href={`/contratos/${i.id}`}
-                      >
-                        {i.instrumentType
-                          ? instrumentTypes[i.instrumentType]
-                          : "Legado"}{" "}
-                        · {i.reference}
-                      </Link>
-                      {i.parentTermId && (
-                        <span className="block text-xs text-slate-500">
-                          Vinculado ao Termo{" "}
-                          {
-                            c.instruments.find((t) => t.id === i.parentTermId)
-                              ?.reference
-                          }
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                <h2 className="font-semibold">Origem e órgão contratante</h2>
                 {c.opportunity && (
                   <p className="mt-5 text-sm">
                     Origem:{" "}
@@ -420,9 +438,10 @@ export default async function Page({
               <ContractForm
                 id={id}
                 version={version}
-                availableTerms={c.instruments
-                  .filter((i) => i.instrumentType === "TERM")
-                  .map((i) => ({ id: i.id, label: i.reference }))}
+                initialItems={c.items.map((i) => ({
+                  quantity: i.quantity.toFixed(3),
+                  unitPrice: i.unitPrice.toFixed(4),
+                }))}
                 initial={{
                   instrumentType: contract.instrumentType,
                   reference: contract.reference,
@@ -437,6 +456,7 @@ export default async function Page({
                   commitmentReference: contract.commitmentReference,
                   notes: contract.notes,
                   documentUrl: contract.documentUrl,
+                  publicationUrl: contract.publicationUrl,
                 }}
               />
             </Box>
@@ -522,8 +542,8 @@ export default async function Page({
         {tab === "pedidos" && (
           <>
             <p className="text-sm text-slate-500">
-              Pedidos do negócio comercial. Registre diretamente a quantidade
-              acumulada fornecida em cada pedido; o saldo pendente é calculado
+              Pedidos do contrato. Registre diretamente a quantidade acumulada
+              fornecida em cada pedido; o saldo pendente é calculado
               automaticamente.
             </p>
             <Box title="Novo pedido">
@@ -532,6 +552,17 @@ export default async function Page({
                   <Field
                     name="reference"
                     label="Referência do pedido (opcional)"
+                  />
+                  <Field
+                    name="commitmentNumber"
+                    label="Número do empenho (opcional)"
+                    value={!isTerm ? contract.reference : ""}
+                  />
+                  <Field
+                    name="commitmentIssuedAt"
+                    label="Data de emissão do empenho (opcional)"
+                    type="date"
+                    value={!isTerm ? iso(contract.issuedAt) : ""}
                   />
                   <Field
                     name="orderDate"
@@ -572,6 +603,10 @@ export default async function Page({
                     c.instruments.find((i) => i.id === order.instrumentId)
                       ?.reference
                   }
+                </p>
+                <p className="text-sm text-slate-500">
+                  Empenho: {order.commitmentNumber ?? "Não informado"} ·
+                  Emissão: {date(order.commitmentIssuedAt)}
                 </p>
                 {order.notes && (
                   <p className="whitespace-pre-wrap text-sm">{order.notes}</p>
@@ -643,6 +678,17 @@ export default async function Page({
                       recordId={order.id}
                     >
                       <div className="grid gap-4 sm:grid-cols-3">
+                        <Field
+                          name="commitmentNumber"
+                          label="Número do empenho (opcional)"
+                          value={order.commitmentNumber ?? ""}
+                        />
+                        <Field
+                          name="commitmentIssuedAt"
+                          label="Data de emissão do empenho (opcional)"
+                          type="date"
+                          value={iso(order.commitmentIssuedAt)}
+                        />
                         <Field
                           name="reference"
                           label="Referência do pedido"
@@ -725,6 +771,7 @@ export default async function Page({
                     label="Número da nota fiscal"
                     required
                   />
+                  <Field name="accessKey" label="Chave de Acesso (opcional)" />
                   <Field
                     name="issueDate"
                     label="Data de emissão"
@@ -789,6 +836,11 @@ export default async function Page({
                       ? ` · Pedido: ${c.orders.find((o) => o.id === invoice.orderId)?.reference ?? invoice.orderId.slice(-8)}`
                       : ""}
                   </p>
+                  {invoice.accessKey && (
+                    <p className="break-all text-sm">
+                      Chave de Acesso: {invoice.accessKey}
+                    </p>
+                  )}
                   {invoice.documentUrl && (
                     <a
                       className="text-brand-700 underline"
@@ -796,7 +848,7 @@ export default async function Page({
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Abrir documento
+                      Abrir diretório ou documento
                     </a>
                   )}
                   {invoice.notes && (
@@ -996,7 +1048,7 @@ export default async function Page({
                       </label>
                       <Field
                         name="documentUrl"
-                        label="Link do documento"
+                        label="Link do diretório ou documento"
                         type="url"
                         value={g.documentUrl ?? ""}
                       />
@@ -1127,7 +1179,7 @@ export default async function Page({
                       target="_blank"
                       rel="noreferrer"
                     >
-                      Abrir documento
+                      Abrir diretório ou documento
                     </a>
                   )}
                   {a.notes && (

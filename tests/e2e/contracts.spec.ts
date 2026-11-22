@@ -97,14 +97,27 @@ test("Termo: item manual, pedido parcial, NF, recebimento e aditivo sem reescrev
   await page.getByLabel("Instrumento jurídico").selectOption("TERM");
   await page.getByLabel("Órgão público").selectOption(agencyId);
   await page.getByLabel("Número do contrato").fill(`CT-${suffix}`);
-  await page.getByLabel("Data do instrumento").fill("2026-11-01");
+  await expect(page.getByLabel("Data do instrumento")).toHaveCount(0);
   await page.getByLabel("Valor do instrumento").fill("1000,00");
-  await page.getByLabel("Situação").selectOption("ACTIVE");
+  await page.getByLabel("Situação").selectOption("DRAFT");
   await page.getByLabel("Data de assinatura").fill("2026-11-01");
+  await page
+    .getByRole("textbox", { name: "Link da publicação", exact: true })
+    .fill("https://pncp.gov.br/app/contratos/1");
+  await page
+    .getByRole("button", { name: "Ajuda sobre link da publicação" })
+    .click();
+  await expect(page.getByRole("tooltip")).toContainText("Diário Oficial");
+  await page
+    .getByRole("button", { name: "Ajuda sobre link da publicação" })
+    .click();
   await page.getByLabel("Início da vigência").fill("2026-11-01");
   await page.getByLabel("Fim da vigência").fill("2027-11-01");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await saved(page);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Valor divergente" }),
+  ).toBeVisible();
   termId = page.url().split("/contratos/")[1].split("?")[0];
   await expect(
     page
@@ -119,10 +132,22 @@ test("Termo: item manual, pedido parcial, NF, recebimento e aditivo sem reescrev
   await box.getByLabel("Preço unitário contratado").fill("100,0000");
   await box.getByRole("button", { name: "Salvar", exact: true }).click();
   await saved(page);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Valor divergente" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "Abrir publicação" }),
+  ).toHaveAttribute("href", "https://pncp.gov.br/app/contratos/1");
   await page.getByRole("link", { name: "Pedidos", exact: true }).click();
   box = await openBox(page, "Novo pedido");
   await box.getByLabel("Referência do pedido").fill("P-E2E");
   await box.getByLabel("Data do pedido").fill("2026-11-02");
+  await box
+    .getByLabel("Número do empenho (opcional)", { exact: true })
+    .fill("NE-CONTABIL-01");
+  await box
+    .getByLabel("Data de emissão do empenho (opcional)", { exact: true })
+    .fill("2026-11-01");
   await box.getByLabel("Prazo de fornecimento").fill("2026-12-01");
   await box.getByLabel("Quantidade item 1").fill("6");
   await box.getByRole("button", { name: "Salvar", exact: true }).click();
@@ -139,6 +164,7 @@ test("Termo: item manual, pedido parcial, NF, recebimento e aditivo sem reescrev
   await page.getByRole("link", { name: "Notas Fiscais", exact: true }).click();
   box = await openBox(page, "Nova nota fiscal");
   await box.getByLabel("Número da nota fiscal").fill("NF-E2E");
+  await box.getByLabel("Chave de Acesso").fill("ABC123xyz");
   await box.getByLabel("Data de emissão").fill("2026-11-03");
   await box.getByLabel("Pedido (opcional)").selectOption({ label: "P-E2E" });
   await box.getByLabel("Quantidade item 1").fill("2");
@@ -179,6 +205,9 @@ test("Termo: item manual, pedido parcial, NF, recebimento e aditivo sem reescrev
       },
     },
   });
+  expect(stored.status).toBe("ACTIVE");
+  expect(stored.case.orders[0].commitmentNumber).toBe("NE-CONTABIL-01");
+  expect(stored.case.invoices[0].accessKey).toBe("ABC123xyz");
   expect(stored.amount!.toFixed(2)).toBe("1000.00");
   expect(stored.case.items[0].quantity.toFixed(3)).toBe("10.000");
   expect(stored.case.invoices[0].amount.toFixed(2)).toBe("200.00");
@@ -186,42 +215,73 @@ test("Termo: item manual, pedido parcial, NF, recebimento e aditivo sem reescrev
     "2.000",
   );
 });
-test("Empenho relacionado: sem vigência ou aditivos e sem duplicação do negócio", async ({
+test("Empenho substitutivo independente: sem agrupamento, dados automáticos no Pedido e alerta de valores", async ({
   page,
 }) => {
   await login(page);
   await page.goto("/contratos/novo");
   await page.getByLabel("Instrumento jurídico").selectOption("COMMITMENT");
-  await page
-    .getByLabel("Negócio comercial existente")
-    .selectOption({ label: `CT-${suffix} · ${agency}` });
+  await expect(page.getByLabel("Negócio comercial existente")).toHaveCount(0);
+  await expect(page.getByLabel("Termo vinculado")).toHaveCount(0);
+  await expect(page.getByLabel("Data de assinatura")).toHaveCount(0);
   await expect(page.getByLabel("Início da vigência")).toHaveCount(0);
-  await page.getByLabel("Número da nota de empenho").fill(`NE-${suffix}`);
-  await page.getByLabel("Data de emissão").fill("2026-11-06");
+  await page.getByLabel("Órgão público").selectOption(agencyId);
+  await page.getByLabel("Número do empenho substitutivo").fill(`NE-${suffix}`);
+  await page
+    .getByLabel("Data de emissão do empenho", { exact: false })
+    .fill("2026-11-06");
   await page.getByLabel("Valor do instrumento").fill("200");
-  await page.getByLabel("Situação").selectOption("ACTIVE");
-  await page.getByLabel("Termo vinculado").selectOption(termId);
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await saved(page);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Valor divergente" }),
+  ).toBeVisible();
+  let box = await openBox(page, "Adicionar item contratado");
+  await box.getByLabel("Número do item").fill("1");
+  await box.getByLabel("Unidade").fill("UN");
+  await box.getByLabel("Descrição").fill("Produto do empenho substitutivo");
+  await box.getByLabel("Quantidade (até 3 casas)").fill("2");
+  await box.getByLabel("Preço unitário contratado").fill("100");
+  await box.getByRole("button", { name: "Salvar", exact: true }).click();
+  await saved(page);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Valor divergente" }),
+  ).toHaveCount(0);
   await expect(
     page
       .getByRole("navigation", { name: "Abas do contrato" })
       .getByRole("link", { name: "Aditivos" }),
   ).toHaveCount(0);
-  expect(
-    await db.contractCase.count({ where: { organizationId: agencyId } }),
-  ).toBe(1);
-  expect(
-    await db.contractItem.count({
-      where: { case: { organizationId: agencyId } },
-    }),
-  ).toBe(1);
+  await page.getByRole("link", { name: "Pedidos", exact: true }).click();
+  box = await openBox(page, "Novo pedido");
+  await expect(
+    box.getByLabel("Número do empenho (opcional)", { exact: true }),
+  ).toHaveValue(`NE-${suffix}`);
+  await expect(
+    box.getByLabel("Data de emissão do empenho (opcional)", { exact: true }),
+  ).toHaveValue("2026-11-06");
+  await box.getByLabel("Data do pedido").fill("2026-11-07");
+  await box.getByLabel("Quantidade item 1").fill("1");
+  await box.getByRole("button", { name: "Salvar", exact: true }).click();
+  await saved(page);
+  const stored = await db.contract.findFirstOrThrow({
+    where: { reference: `NE-${suffix}` },
+    include: { case: { include: { orders: true } } },
+  });
+  expect(stored.status).toBe("ACTIVE");
+  expect(stored.case.orders[0].commitmentNumber).toBe(`NE-${suffix}`);
+  expect(stored.caseId).not.toBe(
+    (await db.contract.findUniqueOrThrow({ where: { id: termId } })).caseId,
+  );
+  await page.goto("/contratos");
+  await expect(
+    page.getByRole("columnheader", { name: "Negócio comercial" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("cell", { name: "Empenho substitutivo", exact: true }),
+  ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload();
-  await page.screenshot({
-    path: "/tmp/govnex-contracts-mobile.png",
-    fullPage: true,
-  });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -267,9 +327,9 @@ test("origem: herda órgão e copia somente itens vencedores com preço e snapsh
   await expect(page.getByLabel("Quantidade item 1")).toHaveValue("5.000");
   await expect(page.getByLabel("Quantidade item 2")).toHaveCount(0);
   await page
-    .getByLabel("Número da nota de empenho")
+    .getByLabel("Número do empenho substitutivo")
     .fill(`NE-ORIGEM-${suffix}`);
-  await page.getByLabel("Data de emissão").fill("2026-11-06");
+  await page.getByLabel("Data de emissão do empenho").fill("2026-11-06");
   await page.getByLabel("Valor do instrumento").fill("51,25");
   await page.getByLabel("Situação").selectOption("ACTIVE");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();

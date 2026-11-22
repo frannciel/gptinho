@@ -19,6 +19,8 @@ import {
   createAmendment,
   cancelAmendment,
   getContract,
+  listContracts,
+  contractValueCheck,
   contractBalances,
   getContractStats,
 } from "@/server/contracts";
@@ -152,44 +154,41 @@ describe.sequential(
       expect(ne.signatureDate).toBeNull();
       expect(await db.supplyOrder.count()).toBe(0);
     });
-    it("não cria empenho pelo texto de referência e não duplica Termo+NE nos totais", async () => {
-      const term = await createContract(db, actorId, {
-        instrument: { ...instrument(), commitmentReference: "NE-texto" },
-        organizationId: agencyId,
-        items: [item()],
+    it("recusa agrupamento e registra empenho contábil apenas no Pedido", async () => {
+      const term = await create();
+      await expect(
+        createContract(db, actorId, {
+          instrument: instrument("COMMITMENT", "NE-01", "400"),
+          caseId: term.caseId,
+        }),
+      ).rejects.toThrow("independente");
+      const p = await createOrder(db, actorId, term.id, await v(term.id), {
+        orderDate: "2026-11-02",
+        commitmentNumber: "NE-CONTABIL",
+        commitmentIssuedAt: "2026-11-01",
+        items: await lines(term.id, "2"),
       });
+      expect(p.commitmentNumber).toBe("NE-CONTABIL");
       expect(await db.contract.count()).toBe(1);
-      await createContract(db, actorId, {
-        instrument: {
-          ...instrument("COMMITMENT", "NE-01", "400"),
-          parentTermId: term.id,
-        },
-        caseId: term.caseId,
-      });
-      await createContract(db, actorId, {
-        instrument: instrument("COMMITMENT", "NE-02", "600"),
-        caseId: term.caseId,
-      });
-      expect(await db.contractCase.count()).toBe(1);
-      expect(await db.contractItem.count()).toBe(1);
-      expect((await getContractStats(db)).contracted).toBe(100000n);
     });
-    it("agrupa vários empenhos sem Termo somando somente seus valores", async () => {
-      const ne = await create("COMMITMENT", "400");
-      await createContract(db, actorId, {
+    it("Termo e empenho substitutivo são contratos independentes", async () => {
+      const term = await create();
+      const ne = await createContract(db, actorId, {
         instrument: instrument("COMMITMENT", "NE-02", "600"),
-        caseId: ne.caseId,
+        organizationId: agencyId,
+        items: [item("6")],
       });
-      expect(contractBalances((await current(ne.id)).case).value).toBe(100000n);
+      expect(ne.caseId).not.toBe(term.caseId);
+      expect((await getContractStats(db)).contracted).toBe(160000n);
     });
-    it("recusa segundo Termo e vínculo a Termo de outro negócio", async () => {
+    it("recusa novos vínculos de instrumentos também pelo backend", async () => {
       const term = await create();
       await expect(
         createContract(db, actorId, {
           instrument: instrument("TERM", "CT-02"),
           caseId: term.caseId,
         }),
-      ).rejects.toThrow("já possui um Termo");
+      ).rejects.toThrow("independente");
       await expect(
         createContract(db, actorId, {
           instrument: {
@@ -198,7 +197,7 @@ describe.sequential(
           },
           organizationId: agencyId,
         }),
-      ).rejects.toThrow("negócio");
+      ).rejects.toThrow();
     });
     it("reserva pedidos, calcula fornecimento parcial e mantém consumo ao cancelar", async () => {
       const term = await create();
@@ -267,21 +266,15 @@ describe.sequential(
         "mesmo negócio",
       );
     });
-    it("compartilha os saldos entre instrumentos e limita o faturamento de cada empenho", async () => {
-      const term = await create();
-      const ne = await createContract(db, actorId, {
-        instrument: instrument("COMMITMENT", "NE-01", "200"),
-        caseId: term.caseId,
-      });
+    it("limita faturamento do empenho substitutivo ao seu próprio valor", async () => {
+      const ne = await create("COMMITMENT", "200");
       await invoice(ne.id, "2");
       await expect(invoice(ne.id, "1", undefined, "NF-02")).rejects.toThrow(
         "Nota de Empenho",
       );
-      expect(contractBalances((await current(term.id)).case).invoiced).toBe(
+      expect(contractBalances((await current(ne.id)).case).invoiced).toBe(
         20000n,
       );
-      await invoice(term.id, "8", undefined, "NF-03");
-      expect((await getContractStats(db)).invoiced).toBe(100000n);
     });
     it("recebe parcialmente, impede excesso e preserva recebimentos ao encerrar", async () => {
       const term = await create();
@@ -316,7 +309,7 @@ describe.sequential(
       expect(contractBalances((await current(term.id)).case).receivable).toBe(
         0n,
       );
-      await expect(order(term.id)).rejects.toThrow("Em andamento");
+      await expect(order(term.id)).rejects.toThrow("encerrado");
     });
     it("cancela nota sem recebimento e libera apenas o faturamento", async () => {
       const term = await create();
@@ -415,7 +408,8 @@ describe.sequential(
       ).rejects.toThrow("saldo");
       const ne = await createContract(db, actorId, {
         instrument: instrument("COMMITMENT", "NE-01"),
-        caseId: term.caseId,
+        organizationId: agencyId,
+        items: [item()],
       });
       await expect(
         createAmendment(db, actorId, ne.id, await v(ne.id), {
@@ -661,18 +655,179 @@ describe.sequential(
         }),
       ).toBe(1);
     });
-    it("vincula Termo posterior aos empenhos existentes sem recriar a operação", async () => {
+    it("não permite converter contratos independentes em grupo", async () => {
       const ne = await create("COMMITMENT", "600");
+      await expect(
+        createContract(db, actorId, {
+          instrument: instrument("TERM", "CT-POSTERIOR", "1000"),
+          caseId: ne.caseId,
+        }),
+      ).rejects.toThrow("independente");
+      expect(await db.contract.count()).toBe(1);
+    });
+    it("inicia execução automaticamente somente após Pedido válido", async () => {
       const term = await createContract(db, actorId, {
-        instrument: instrument("TERM", "CT-POSTERIOR", "1000"),
-        caseId: ne.caseId,
+        instrument: { ...instrument(), status: "DRAFT" },
+        organizationId: agencyId,
+        items: [item()],
       });
-      expect(term.caseId).toBe(ne.caseId);
-      expect(await db.contractCase.count()).toBe(1);
-      expect(await db.contractItem.count()).toBe(1);
-      expect(contractBalances((await current(term.id)).case).value).toBe(
-        100000n,
+      await expect(order(term.id, "11")).rejects.toThrow("saldo");
+      expect((await current(term.id)).status).toBe("DRAFT");
+      await order(term.id, "2");
+      expect((await current(term.id)).status).toBe("ACTIVE");
+      const audit = await db.auditLog.findFirstOrThrow({
+        where: { entityId: term.caseId, action: "CREATE_ORDER" },
+      });
+      expect(audit.changes).toMatchObject({
+        before: { instruments: [{ status: "DRAFT" }] },
+        after: { instruments: [{ status: "ACTIVE" }] },
+      });
+    });
+    it("preenche dados do empenho substitutivo automaticamente no Pedido", async () => {
+      const ne = await create("COMMITMENT");
+      const p = await order(ne.id, "2");
+      expect(p.commitmentNumber).toBe(ne.reference);
+      expect(p.commitmentIssuedAt!.toISOString().slice(0, 10)).toBe(
+        "2026-11-01",
       );
+      await updateOrder(
+        db,
+        actorId,
+        ne.id,
+        await v(ne.id),
+        {
+          orderDate: "2026-11-02",
+          commitmentNumber: "NE-CORRIGIDO",
+          commitmentIssuedAt: "2026-11-02",
+          items: await lines(ne.id, "2"),
+        },
+        p.id,
+      );
+      expect((await current(ne.id)).case.orders[0].commitmentNumber).toBe(
+        "NE-CORRIGIDO",
+      );
+    });
+    it("concilia valores de ambos os tipos com precisão de centavos e preserva rascunhos", async () => {
+      const term = await createContract(db, actorId, {
+        instrument: {
+          ...instrument(),
+          issuedAt: undefined,
+          publicationUrl: "https://pncp.gov.br/app/contratos/1",
+        },
+        organizationId: agencyId,
+        items: [item()],
+      });
+      expect(term.issuedAt).toBeNull();
+      expect(term.publicationUrl).toContain("pncp.gov.br");
+      expect(
+        contractValueCheck((await current(term.id)).case, term.id).matches,
+      ).toBe(true);
+      const ne = await createContract(db, actorId, {
+        instrument: instrument("COMMITMENT", "NE-TEST", "1"),
+        organizationId: agencyId,
+        items: [item("3", "0.1250")],
+      });
+      expect(
+        contractValueCheck((await current(ne.id)).case, ne.id),
+      ).toMatchObject({ matches: false, total: "0.38", declared: "1.00" });
+      await updateContract(
+        db,
+        actorId,
+        ne.id,
+        await v(ne.id),
+        instrument("COMMITMENT", "NE-TEST", "0.38"),
+      );
+      expect(
+        contractValueCheck((await current(ne.id)).case, ne.id).matches,
+      ).toBe(true);
+    });
+    it("registra chave alfanumérica da NF e recusa caracteres inválidos", async () => {
+      const term = await create();
+      const nf = await createInvoice(db, actorId, term.id, await v(term.id), {
+        reference: "NF-KEY",
+        issueDate: "2026-11-03",
+        accessKey: "ABC123xyz",
+        items: await lines(term.id, "1"),
+      });
+      expect(nf.accessKey).toBe("ABC123xyz");
+      await expect(
+        createInvoice(db, actorId, term.id, await v(term.id), {
+          reference: "NF-BAD",
+          issueDate: "2026-11-03",
+          accessKey: "123/456",
+          items: await lines(term.id, "1"),
+        }),
+      ).rejects.toThrow();
+    });
+    it("lista apenas Termos e empenhos substitutivos e preserva notas contábeis legadas", async () => {
+      const term = await create();
+      const related = await db.contract.create({
+        data: {
+          caseId: term.caseId,
+          organizationId: agencyId,
+          instrumentType: "COMMITMENT",
+          substitutive: false,
+          parentTermId: term.id,
+          reference: "NE-LEGADA",
+          issuedAt: new Date("2026-11-01"),
+          amount: "200",
+          status: "ACTIVE",
+        },
+      });
+      expect((await listContracts(db)).rows.map((i) => i.id)).toEqual([
+        term.id,
+      ]);
+      expect(await getContract(db, related.id)).toBeNull();
+      await expect(
+        createOrder(db, actorId, related.id, await v(term.id), {
+          orderDate: "2026-11-02",
+          items: await lines(term.id, "1"),
+        }),
+      ).rejects.toThrow("Contrato não encontrado");
+      expect(await db.contract.count()).toBe(2);
+    });
+    it("não apaga datas e referências históricas de Termos ao editar outros dados", async () => {
+      const term = await create();
+      await db.contract.update({
+        where: { id: term.id },
+        data: {
+          issuedAt: new Date("2026-10-31"),
+          commitmentReference: "Referência anterior",
+        },
+      });
+      await updateContract(db, actorId, term.id, await v(term.id), {
+        ...instrument(),
+        issuedAt: undefined,
+        notes: "Observação atualizada",
+      });
+      const saved = await current(term.id);
+      expect(saved.issuedAt!.toISOString().slice(0, 10)).toBe("2026-10-31");
+      expect(saved.commitmentReference).toBe("Referência anterior");
+    });
+    it("mantém recebimentos de notas existentes em agrupamentos legados ambíguos", async () => {
+      const ne = await create("COMMITMENT");
+      const nf = await invoice(ne.id, "2");
+      await db.contract.create({
+        data: {
+          caseId: ne.caseId,
+          organizationId: agencyId,
+          instrumentType: "COMMITMENT",
+          substitutive: true,
+          reference: "NE-SEGUNDO",
+          issuedAt: new Date("2026-11-01"),
+          amount: "100",
+          status: "ACTIVE",
+        },
+      });
+      await expect(order(ne.id, "1")).rejects.toThrow("legado");
+      await createReceipt(db, actorId, ne.id, await v(ne.id), {
+        invoiceId: nf.id,
+        date: "2026-11-04",
+        amount: "100",
+      });
+      expect(
+        (await current(ne.id)).case.invoices[0].receipts[0].amount.toFixed(2),
+      ).toBe("100.00");
     });
   },
 );

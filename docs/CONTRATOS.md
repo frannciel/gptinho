@@ -1,73 +1,106 @@
 # Contratos e Fornecimento
 
-Implementação baseada no anexo “Govnex — Revisão do módulo de Contratos e Fornecimento”. As novas orientações prevalecem sobre as referências antigas a Entrega nos Documentos 03, 07 e 10. O Documento 04 não estava disponível. Não existe entidade, evento ou comprovante individual de Entrega nesta implementação.
+## Modelo operacional vigente
 
-## Uso
+A tela **Contratos** lista **Termos de Contrato** e **Empenhos substitutivos do Termo de Contrato**. Ambos são acompanhados como contratos independentes, com seus próprios itens, Pedidos, notas fiscais e recebimentos.
 
-1. Acesse **Contratos → Novo contrato** e escolha obrigatoriamente **Termo de Contrato** ou **Nota de Empenho**.
-2. Para um negócio novo, selecione a contratação de origem ou informe manualmente o órgão. Com origem, o órgão é herdado e os itens vencedores com oferta preenchida podem ser copiados, inclusive em quantidades parciais. Sem origem, cadastre os itens em Dados gerais após salvar.
-3. Para instrumentos da mesma operação, selecione **Negócio comercial existente**. Se houver Termo, pode vinculá-lo no mesmo cadastro. Um Termo recebido posteriormente também pode ser incluído no negócio que já contém empenhos. Esse empenho usa os mesmos itens, reservas e saldos; não crie outro negócio comercial.
-4. O texto opcional “Referência de empenho” do Termo é apenas uma referência. Nunca cria outro instrumento automaticamente.
-5. Complete o instrumento e defina **Em andamento** para novos pedidos, notas fiscais ou aditivos. Encerramento/cancelamento gerencial não apaga obrigações registradas; recebimentos continuam possíveis para notas válidas.
-6. Registre cada pedido na aba Pedidos. Informe o fornecimento **acumulado**, incluindo fornecimentos parciais. Pendente = solicitado − fornecido. A situação é calculada. É possível corrigir a referência, as datas, o prazo e as quantidades, respeitando o que já foi fornecido/faturado.
-7. Registre notas fiscais em Notas Fiscais, com ou sem pedido. Deixe em branco os itens que não entram na operação. A nota registra quantidade, descrição, unidade, preço vigente e total de cada linha. Recebimentos parciais são registrados na própria nota.
-8. Garantias são opcionais, por instrumento. Aditivos aparecem somente no Termo e registram variações com sinal e/ou nova data final. Para reduzir, use valores negativos. Aditivos não alteram os valores originais nem reescrevem pedidos ou notas anteriores.
+O agrupamento “Negócio comercial” foi retirado do cadastro, das consultas e da listagem. Não há seleção de negócio existente nem vínculo de um novo empenho a um Termo. Notas de empenho de acompanhamento contábil são referências dos **Pedidos**, não novos contratos.
 
-Os links de documentos são opcionais; não há upload nem armazenamento local. Dados de fonte, órgão e itens são preservados em snapshots para consulta/auditoria. Mudanças posteriores no catálogo, fornecedor ou proposta não atualizam automaticamente os itens contratados.
-
-## Modelo
-
-`ContractCase` é a referência gerencial de um negócio; `Contract` é um instrumento jurídico desse negócio. Cada negócio admite no máximo um Termo e vários empenhos, inclusive somente empenhos. Os instrumentos relacionados não duplicam os itens.
+### Relações operacionais
 
 ```mermaid
-erDiagram
-    Organization ||--o{ ContractCase : contrata
-    Opportunity o|--o{ ContractCase : origina
-    ContractCase ||--|{ Contract : instrumentos
-    Contract o|--o{ Contract : "Termo vincula empenhos"
-    ContractCase ||--o{ ContractItem : itens
-    OpportunityItem o|--o{ ContractItem : snapshot
-    Contract ||--o{ SupplyOrder : pedidos
-    SupplyOrder ||--|{ SupplyOrderItem : itens
-    ContractItem ||--o{ SupplyOrderItem : solicitado_fornecido
-    Contract ||--o{ SalesInvoice : notas
-    SupplyOrder o|--o{ SalesInvoice : pedido_opcional
-    SalesInvoice ||--|{ SalesInvoiceItem : itens
-    ContractItem ||--o{ SalesInvoiceItem : faturado
-    SupplyOrderItem o|--o{ SalesInvoiceItem : item_pedido_opcional
-    SalesInvoice ||--o{ InvoiceReceipt : recebimentos
-    Contract ||--o{ ContractGuarantee : garantias
-    Contract ||--o{ ContractAmendment : "somente Termo"
-    ContractAmendment ||--o{ ContractAmendmentItem : variacoes
-    ContractItem ||--o{ ContractAmendmentItem : altera_saldo
+flowchart TD
+    ORG["Órgão contratante"] --> CT["Contrato: Termo ou Empenho substitutivo"]
+    LIC["Contratação de origem opcional"] -.-> CT
+    CT --> IT["Itens contratados"]
+    CT --> PD["Pedidos: prazo, solicitado e fornecido acumulado"]
+    PD --> NE["Número e data do empenho contábil: opcionais"]
+    CT --> NF["Notas fiscais e itens: faturamento parcial"]
+    PD -. "Pedido opcional" .-> NF
+    NF --> REC["Recebimentos parciais ou integrais"]
+    CT --> GAR["Garantias opcionais"]
+    CT --> AD["Aditivos: somente no Termo no MVP"]
 ```
 
-## Cálculos e integridade
+O diagrama representa a operação apresentada ao usuário. Não existe entidade Entrega: o fornecimento é registrado diretamente no Pedido.
 
-- Quantidades: `Decimal(18,3)`; preços unitários: `Decimal(18,4)`; totais/recebimentos/garantias: `Decimal(18,2)`.
-- Aritmética exata com inteiros de escala fixa. Total da linha = quantidade × preço, arredondado HALF_UP para centavos; total da nota = soma das linhas já arredondadas.
-- Quantidade vigente e preço vigente = original + variações dos aditivos não cancelados. O preço vigente afeta notas futuras; uma nota existente mantém seu snapshot.
-- Valor vigente do negócio com Termo = valor original do Termo + aditivos não cancelados. Valores de seus empenhos não são somados novamente. Sem Termo, a base é a soma dos valores dos empenhos do mesmo negócio. Situação gerencial não elimina valores originais nem obrigações: notas canceladas deixam de compor o faturamento, mas seus documentos permanecem no histórico.
-- Solicitações não podem ultrapassar a quantidade vigente. O cancelamento de um pedido libera apenas o saldo não consumido; continua reservado o maior entre quantidade fornecida e quantidade faturada vinculada a ele.
-- Faturamento válido não pode ultrapassar quantidade vigente, quantidade do pedido quando vinculado, valor vigente do negócio ou valor do empenho faturado. Pedido não é obrigatório e a nota não exige fornecimento prévio registrado.
-- Recebimentos positivos e parciais não podem ultrapassar o saldo da nota e não podem anteceder sua emissão. Nota com recebimento não pode ser cancelada.
-- Aditivos não podem produzir preço/quantidade negativos, exceder a capacidade dos campos nem reduzir valores ou quantidades abaixo do já comprometido. A quantidade original alocada entre negócios respeita a proposta de origem; acréscimos jurídicos posteriores por aditivo são registrados separadamente.
-- Itens manuais podem ser incluídos, editados e excluídos antes da execução; depois, alterações de valor/quantidade usam aditivos no Termo. Itens copiados da origem preservam o retrato da proposta vencedora.
-- Toda mutação contextual bloqueia o negócio no PostgreSQL, verifica a versão e grava auditoria com antes/depois na mesma transação. Instrumentos de um mesmo negócio compartilham a versão, evitando gravações sobre dados desatualizados.
-- Chaves compostas impedem vínculos de itens/pedidos/notas entre negócios diferentes. Exclusão da contratação e remoção do papel de órgão público são bloqueadas quando há contratos vinculados.
-- Situações gerenciais: Em preparação, Em andamento, Encerrado e Cancelado. Elas não são procedimentos administrativos do órgão público.
+## Cadastro do contrato
 
-## Migração e implantação
+1. Escolha **Termo de Contrato** ou **Empenho substitutivo**.
+2. Se houver contratação de origem, selecione-a para herdar o órgão e copiar os itens vencedores com preço informado, respeitando as quantidades disponíveis. Sem origem, selecione o órgão e cadastre os itens manualmente após salvar.
+3. No Termo, informe a data de assinatura e a vigência. O campo genérico **Data do instrumento** foi removido. No Empenho substitutivo, a data de emissão identifica o próprio empenho e é usada para preencher os Pedidos.
+4. **Link da publicação** é opcional, com ajuda para publicação no PNCP ou Diário Oficial da União, do Estado ou do Município.
+5. **Link do diretório ou documento** é opcional e tem o mesmo nome em contratos, notas fiscais, garantias e aditivos. São links HTTP/HTTPS; não há upload nem armazenamento local.
 
-Migração: `20261122000000_contracts_supply`.
+### Conferência do valor
 
-Ela adiciona as tabelas de execução e amplia `Contract`; não exclui contratos nem notas/recebimentos. Na base anterior havia somente o vínculo mínimo `Contract` (origem + referência), sem execução financeira ou Entregas a converter.
+O **Valor do instrumento (R$)** continua informado conforme o documento e é confrontado com o total dos itens, tanto no Termo quanto no Empenho substitutivo.
 
-Cada contrato antigo ganha uma referência gerencial própria, herdando órgão/origem e preservando seu ID, número e timestamps. O tipo, datas e valor jurídico ficam **não informados**, pois não podem ser deduzidos com segurança. Nenhuma migração presume que dois documentos antigos são o mesmo negócio. Revise esses cadastros em Dados gerais. Para contratos de origem ainda sem itens, o botão de cópia explícita importa a proposta vencedora **atualmente disponível**, inclusive se a origem estiver arquivada; ele não reconstrói uma proposta histórica desconhecida.
+```text
+Total de cada item = quantidade × preço unitário, arredondado para centavos
+Total dos itens = soma dos totais de cada item
+Valor conferido = valor do instrumento igual ao total dos itens em centavos
+```
 
-A antiga unicidade origem+número foi substituída por órgão+tipo+número, permitindo um Termo e um empenho com o mesmo número, mas impedindo instrumentos duplicados do mesmo tipo/órgão. Um índice parcial limita um Termo por negócio. IDs e relacionamentos antigos são mantidos.
+Quantidades têm até três casas decimais; preços unitários, quatro; totais, duas. Usa-se aritmética decimal exata e arredondamento HALF_UP por linha, sem ponto flutuante nos cálculos financeiros.
 
-Aplicar em homologação primeiro, com backup e variáveis de banco do ambiente pretendido:
+Uma diferença de um centavo já gera alerta. O formulário mostra a conferência durante a edição; o backend recalcula a comparação nas consultas e na listagem. O alerta permanece em todas as abas enquanto existir divergência e é atualizado após alterações de itens ou aditivos.
+
+A divergência **não bloqueia salvar um cadastro ainda incompleto**: itens manuais são incluídos após criar o contrato. Esse cadastro continua sinalizado como divergente até os valores coincidirem. Os limites financeiros de faturamento continuam sendo aplicados independentemente do alerta.
+
+Com aditivos, a consulta compara os valores vigentes: valor original acrescido das variações do aditivo e itens acrescidos de suas variações de quantidade/preço. Os dados originais são preservados.
+
+## Pedidos e início da execução
+
+O Pedido registra referência opcional, data, prazo de fornecimento e observações. Os campos **Número do empenho** e **Data de emissão do empenho** são opcionais.
+
+- Em Termos, esses campos podem registrar o empenho contábil correspondente ao Pedido.
+- Em Empenhos substitutivos, o formulário já apresenta o número e a emissão do próprio empenho. O backend também preenche esses dados quando os campos chegam vazios. Os dados gravados no Pedido são independentes de alterações posteriores no contrato.
+- Os dados do empenho também podem ser consultados e corrigidos no próprio Pedido.
+
+Cadastrar um Pedido válido muda automaticamente um contrato **Em preparação** para **Em execução**, na mesma transação. Não é necessário mudar a situação manualmente antes de criar o Pedido. Se a gravação falhar, a situação não é alterada. Contratos encerrados ou cancelados não aceitam novos Pedidos.
+
+A quantidade fornecida é acumulada. Pendente = solicitado − fornecido. Situações calculadas: Pendente, Parcialmente fornecido, Fornecido e Cancelado. Pedidos não podem consumir mais que o saldo contratual; correções não podem reduzir a quantidade abaixo do já fornecido ou faturado.
+
+## Notas fiscais e recebimentos
+
+A nota fiscal registra número, emissão, itens, valor calculado e pedido opcional. Não exige uma Entrega nem um Pedido artificial. O campo **Chave de Acesso** é opcional, aceita letras e números e permite guardar a referência para consulta externa no portal da fazenda competente. Não existe consulta automática nem validação fiscal da chave. O limite de armazenamento é de 100 caracteres; não se impõe uma chave exclusivamente numérica de 44 dígitos.
+
+As notas permitem faturamento parcial. Quantidades não podem ultrapassar os saldos do contrato ou do Pedido vinculado. Cada nota preserva descrição, unidade, preço e total de suas linhas, mesmo após aditivos futuros.
+
+Recebimentos são registrados na própria nota, com data e valor positivos. Não podem exceder seu saldo nem anteceder a emissão. Uma nota com recebimentos não pode ser cancelada. Encerrar o contrato não apaga obrigações nem impede registrar recebimentos válidos.
+
+## Garantias, aditivos e histórico
+
+Garantias são opcionais. Aditivos continuam disponíveis apenas no Termo, preservando valores originais, pedidos, notas e recebimentos anteriores. Reduções não podem invalidar saldos já utilizados. Itens manuais podem ser corrigidos antes da execução; após lançamentos, ajustes seguem as regras de aditivos já existentes.
+
+Alterações relevantes mantêm auditoria antes/depois. Gravações contextuais verificam a versão e bloqueiam a base de execução no PostgreSQL para evitar conflitos e consumo concorrente do mesmo saldo. Mudanças posteriores na origem, no catálogo ou no fornecedor não atualizam automaticamente os snapshots dos itens contratados.
+
+## Migração e compatibilidade
+
+Nova migração: `20261122000100_simplify_contracts`, aplicada depois de `20261122000000_contracts_supply`.
+
+A migração adiciona:
+
+| Entidade       | Campos                                   |
+| -------------- | ---------------------------------------- |
+| `Contract`     | `substitutive`, `publicationUrl`         |
+| `SupplyOrder`  | `commitmentNumber`, `commitmentIssuedAt` |
+| `SalesInvoice` | `accessKey`                              |
+
+Ela preserva documentos, IDs, itens, quantidades, notas, recebimentos e auditoria existentes. Não apaga colunas históricas de datas ou vínculos. O campo antigo de emissão deixa de ser exigido para o Termo; a assinatura continua obrigatória.
+
+Empenhos anteriores vinculados a um Termo, explicitamente ou na mesma base de execução, são marcados como referências contábeis e deixam de aparecer como contratos. Seus números e datas são copiados para os Pedidos correspondentes, preservando os vínculos históricos das notas fiscais e recebimentos.
+
+O armazenamento interno `ContractCase` permanece para compatibilidade e integridade, sem ser apresentado ao operador. Cada contrato novo cria sua própria base de execução; não é possível criar novos agrupamentos pela interface ou pelo backend.
+
+**Exceção legada:** bases anteriores com vários instrumentos ainda independentes compartilhando os mesmos itens exigem revisão dos documentos para separar quantidades e obrigações. O sistema preserva e sinaliza esses registros e impede novos lançamentos ambíguos; recebimentos de notas já emitidas continuam disponíveis. Não divide quantidades, transfere recebimentos nem deduz vínculos jurídicos por suposição. Cadastros anteriores sem tipo definido são acessíveis por **Revisar cadastros legados** na listagem.
+
+O documento [Negócio comercial](NEGOCIO_COMERCIAL.md) registra a concepção anterior e fica mantido como histórico, não como instrução operacional vigente.
+
+## Implantação e verificação
+
+Não há novas variáveis de ambiente. Em homologação, com as variáveis já documentadas configuradas:
 
 ```bash
 npm ci
@@ -76,18 +109,15 @@ npm run db:migrate
 npm run build
 ```
 
-`db:migrate` usa `prisma migrate deploy`; nunca execute `db:dev`, `reset` ou `db push` em produção. Não há novas variáveis além das já documentadas em `.env.example`. O deploy Vercel deve usar o framework Next.js e a mesma base da migration, mantendo os segredos no ambiente.
+`db:migrate` executa `prisma migrate deploy`. Não usar `reset`, `db push` ou migrations de desenvolvimento em produção. Primeiro validar com documentos reais em homologação. A migração desta entrega é testada somente em PostgreSQL descartável, inclusive com registros anteriores e reaplicação sem pendências; não executa alterações no Neon por conta própria.
 
-Rollback de aplicação: retornar ao deploy anterior sem apagar a expansão de schema. Não remover tabelas de execução depois de haver lançamentos. Reversão de dados exige plano específico com backup; não há migration destrutiva de rollback.
+Rollback de aplicação preserva a expansão do banco. Não apagar novas tabelas/colunas ou desfazer dados com lançamentos; qualquer reversão de dados exige um plano específico com backup.
 
-## Validação e limites
+A entrega inclui testes de conciliação exata, campos opcionais, início automático de execução, contratos independentes, rejeição de agrupamentos, preenchimento do empenho, chave da NF, autorização e preservação dos dados legados, além dos testes de regressão existentes.
 
-Verificações concluídas: TypeScript, ESLint, Prettier e build Next.js aprovados; 151 testes unitários, 91 de integração com PostgreSQL e 15 de navegador (257 no total), todos aprovados.
+### Resultado das verificações desta entrega
 
-Testes cobrem instrumentos, não duplicação comercial, snapshots, pedidos parciais, cancelamentos, faturamento, recebimentos, garantias, aditivos, concorrência, autorização e preservação de registros antigos. Fluxos de navegador verificam cadastro de Termo e empenho relacionado e execução contextual.
-
-Neste ambiente, a execução das migrations utilizou o engine oficial WASM do Prisma com adaptador PostgreSQL. O procedimento normal de implantação continua sendo `npm run db:migrate`.
-
-A migration foi aplicada somente ao PostgreSQL descartável de testes, com segunda execução sem migrações pendentes. Neon/produção e publicação Vercel não foram alterados nesta entrega.
-
-A validação fiscal de uma NF, arquivos XML, emissão de NF-e, estornos financeiros, gestão de documentos, gestão orçamentária pública e fluxos administrativos de aceite não fazem parte do escopo. A nota é um registro interno manual; o recebimento registra dinheiro efetivamente recebido. Valide em homologação com documentos reais antes do uso operacional.
+- TypeScript, ESLint, Prettier e build Next.js aprovados.
+- 154 testes unitários, 99 de integração com PostgreSQL e 15 de navegador: **268 aprovados**.
+- Nova migração aplicada somente ao PostgreSQL descartável de testes; segunda execução sem pendências. A execução local utilizou o engine oficial WASM do Prisma com o adaptador PostgreSQL.
+- Nenhuma migration no Neon e nenhum deploy de produção foram executados nesta entrega.
