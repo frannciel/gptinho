@@ -256,21 +256,23 @@ enum InstrumentStatus {
 }
 
 model ContractCase {
-  id                   String              @id @default(cuid())
-  reference            String              @unique
+  id                   String                @id @default(cuid())
+  reference            String                @unique
   opportunityId        String?
-  opportunity          Opportunity?        @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  opportunity          Opportunity?          @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
   organizationId       String
-  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   organizationSnapshot Json
-  version              Int                 @default(1)
-  createdAt            DateTime            @default(now())
-  updatedAt            DateTime            @updatedAt
+  version              Int                   @default(1)
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
   instruments          Contract[]
   items                ContractItem[]
   orders               SupplyOrder[]
   invoices             SalesInvoice[]
   guarantees           ContractGuarantee[]
+  periods              ContractPeriod[]
+  endorsements         ContractEndorsement[]
   amendments           ContractAmendment[]
 
   @@index([organizationId])
@@ -278,36 +280,41 @@ model ContractCase {
 }
 
 model Contract {
-  id                  String              @id @default(cuid())
-  opportunityId       String?
-  opportunity         Opportunity?        @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
-  organizationId      String
-  organization        Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  caseId              String
-  case                ContractCase        @relation(fields: [caseId], references: [id], onDelete: Restrict)
-  parentTermId        String?
-  parentTerm          Contract?           @relation("LinkedCommitments", fields: [parentTermId, caseId], references: [id, caseId], onDelete: Restrict, onUpdate: NoAction)
-  commitments         Contract[]          @relation("LinkedCommitments")
-  substitutive        Boolean             @default(true)
-  publicationUrl      String?
-  instrumentType      InstrumentType?
-  reference           String
-  issuedAt            DateTime?           @db.Date
-  amount              Decimal?            @db.Decimal(18, 2)
-  status              InstrumentStatus    @default(DRAFT)
-  signatureDate       DateTime?           @db.Date
-  validFrom           DateTime?           @db.Date
-  validUntil          DateTime?           @db.Date
-  commitmentReference String?
-  supplyDeadline      DateTime?           @db.Date
-  documentUrl         String?
-  notes               String?
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-  orders              SupplyOrder[]
-  invoices            SalesInvoice[]
-  guarantees          ContractGuarantee[]
-  amendments          ContractAmendment[]
+  id                   String                @id @default(cuid())
+  opportunityId        String?
+  opportunity          Opportunity?          @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  organizationId       String
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  caseId               String
+  case                 ContractCase          @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  parentTermId         String?
+  parentTerm           Contract?             @relation("LinkedCommitments", fields: [parentTermId, caseId], references: [id, caseId], onDelete: Restrict, onUpdate: NoAction)
+  commitments          Contract[]            @relation("LinkedCommitments")
+  substitutive         Boolean               @default(true)
+  publicationUrl       String?
+  instrumentType       InstrumentType?
+  reference            String
+  issuedAt             DateTime?             @db.Date
+  amount               Decimal?              @db.Decimal(18, 2)
+  initialCurrentAmount Decimal?              @db.Decimal(18, 2)
+  currentAmount        Decimal?              @db.Decimal(18, 2)
+  continuous           Boolean               @default(false)
+  status               InstrumentStatus      @default(DRAFT)
+  signatureDate        DateTime?             @db.Date
+  validFrom            DateTime?             @db.Date
+  validUntil           DateTime?             @db.Date
+  commitmentReference  String?
+  supplyDeadline       DateTime?             @db.Date
+  documentUrl          String?
+  notes                String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  orders               SupplyOrder[]
+  invoices             SalesInvoice[]
+  guarantees           ContractGuarantee[]
+  periods              ContractPeriod[]
+  endorsements         ContractEndorsement[]
+  amendments           ContractAmendment[]
 
   @@unique([id, caseId])
   @@unique([organizationId, instrumentType, reference])
@@ -315,21 +322,22 @@ model Contract {
 }
 
 model ContractItem {
-  id                String                  @id @default(cuid())
+  id                String                    @id @default(cuid())
   caseId            String
-  case              ContractCase            @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  case              ContractCase              @relation(fields: [caseId], references: [id], onDelete: Restrict)
   opportunityItemId String?
-  opportunityItem   OpportunityItem?        @relation(fields: [opportunityItemId], references: [id], onDelete: Restrict)
+  opportunityItem   OpportunityItem?          @relation(fields: [opportunityItemId], references: [id], onDelete: Restrict)
   number            Int
   description       String
   unit              String
   brand             String?
   model             String?
-  quantity          Decimal                 @db.Decimal(18, 3)
-  unitPrice         Decimal                 @db.Decimal(18, 4)
+  quantity          Decimal                   @db.Decimal(18, 3)
+  unitPrice         Decimal                   @db.Decimal(18, 4)
   sourceSnapshot    Json?
   orderItems        SupplyOrderItem[]
   invoiceItems      SalesInvoiceItem[]
+  endorsementItems  ContractEndorsementItem[]
   amendmentItems    ContractAmendmentItem[]
 
   @@unique([caseId, number])
@@ -344,6 +352,8 @@ model SupplyOrder {
   case               ContractCase      @relation(fields: [caseId], references: [id], onDelete: Restrict)
   instrumentId       String
   instrument         Contract          @relation(fields: [instrumentId, caseId], references: [id, caseId], onDelete: Restrict)
+  periodId           String?
+  period             ContractPeriod?   @relation(fields: [periodId, caseId], references: [id, caseId], onDelete: Restrict)
   reference          String?
   commitmentNumber   String?
   commitmentIssuedAt DateTime?         @db.Date
@@ -367,6 +377,7 @@ model SupplyOrderItem {
   order             SupplyOrder        @relation(fields: [orderId, caseId], references: [id, caseId], onDelete: Restrict)
   contractItemId    String
   contractItem      ContractItem       @relation(fields: [contractItemId, caseId], references: [id, caseId], onDelete: Restrict)
+  unitPrice         Decimal?           @db.Decimal(18, 4)
   requestedQuantity Decimal            @db.Decimal(18, 3)
   suppliedQuantity  Decimal            @default(0) @db.Decimal(18, 3)
   invoiceItems      SalesInvoiceItem[]
@@ -381,6 +392,8 @@ model SalesInvoice {
   case         ContractCase       @relation(fields: [caseId], references: [id], onDelete: Restrict)
   instrumentId String
   instrument   Contract           @relation(fields: [instrumentId, caseId], references: [id, caseId], onDelete: Restrict)
+  periodId     String?
+  period       ContractPeriod?    @relation(fields: [periodId, caseId], references: [id, caseId], onDelete: Restrict)
   orderId      String?
   order        SupplyOrder?       @relation(fields: [orderId, caseId], references: [id, caseId], onDelete: Restrict)
   reference    String
@@ -449,21 +462,23 @@ model ContractGuarantee {
 }
 
 model ContractAmendment {
-  id           String                  @id @default(cuid())
-  caseId       String
-  case         ContractCase            @relation(fields: [caseId], references: [id], onDelete: Restrict)
-  instrumentId String
-  instrument   Contract                @relation(fields: [instrumentId, caseId], references: [id, caseId], onDelete: Restrict)
-  reference    String
-  date         DateTime                @db.Date
-  type         String
-  valueDelta   Decimal                 @default(0) @db.Decimal(18, 2)
-  newEndDate   DateTime?               @db.Date
-  cancelled    Boolean                 @default(false)
-  documentUrl  String?
-  notes        String?
-  createdAt    DateTime                @default(now())
-  items        ContractAmendmentItem[]
+  id            String                  @id @default(cuid())
+  caseId        String
+  case          ContractCase            @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  instrumentId  String
+  instrument    Contract                @relation(fields: [instrumentId, caseId], references: [id, caseId], onDelete: Restrict)
+  reference     String
+  date          DateTime                @db.Date
+  type          String
+  kind          AmendmentKind?
+  renewalPeriod ContractPeriod?
+  valueDelta    Decimal                 @default(0) @db.Decimal(18, 2)
+  newEndDate    DateTime?               @db.Date
+  cancelled     Boolean                 @default(false)
+  documentUrl   String?
+  notes         String?
+  createdAt     DateTime                @default(now())
+  items         ContractAmendmentItem[]
 
   @@unique([instrumentId, reference])
   @@unique([id, caseId])
@@ -480,4 +495,68 @@ model ContractAmendmentItem {
   unitPriceDelta Decimal           @default(0) @db.Decimal(18, 4)
 
   @@unique([amendmentId, contractItemId])
+}
+
+enum AmendmentKind {
+  ADDITION
+  SUPPRESSION
+  EXTENSION
+  RENEWAL
+  MIXED
+}
+
+enum EndorsementKind {
+  ADJUSTMENT
+  RENEGOTIATION
+}
+
+model ContractPeriod {
+  id            String             @id @default(cuid())
+  caseId        String
+  case          ContractCase       @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  instrumentId  String
+  instrument    Contract           @relation(fields: [instrumentId, caseId], references: [id, caseId], onDelete: Restrict)
+  number        Int
+  startsAt      DateTime?          @db.Date
+  endsAt        DateTime?          @db.Date
+  amount        Decimal?           @db.Decimal(18, 2)
+  itemsSnapshot Json
+  renewalId     String?            @unique
+  renewal       ContractAmendment? @relation(fields: [renewalId, caseId], references: [id, caseId], onDelete: Restrict)
+  orders        SupplyOrder[]
+  invoices      SalesInvoice[]
+
+  @@unique([id, caseId])
+  @@unique([caseId, number])
+  @@unique([renewalId, caseId])
+}
+
+model ContractEndorsement {
+  id            String                    @id @default(cuid())
+  caseId        String
+  case          ContractCase              @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  instrumentId  String
+  instrument    Contract                  @relation(fields: [instrumentId, caseId], references: [id, caseId], onDelete: Restrict)
+  reference     String
+  signatureDate DateTime                  @db.Date
+  type          EndorsementKind
+  documentUrl   String?
+  notes         String?
+  createdAt     DateTime                  @default(now())
+  items         ContractEndorsementItem[]
+
+  @@unique([id, caseId])
+  @@unique([instrumentId, reference])
+}
+
+model ContractEndorsementItem {
+  id             String              @id @default(cuid())
+  caseId         String
+  endorsementId  String
+  endorsement    ContractEndorsement @relation(fields: [endorsementId, caseId], references: [id, caseId], onDelete: Restrict)
+  contractItemId String
+  contractItem   ContractItem        @relation(fields: [contractItemId, caseId], references: [id, caseId], onDelete: Restrict)
+  unitPrice      Decimal             @db.Decimal(18, 4)
+
+  @@unique([endorsementId, contractItemId])
 }

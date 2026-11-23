@@ -79,6 +79,7 @@ export const instrumentSchema = z
     reference: shortText,
     issuedAt: optionalDay,
     amount: decimal(2),
+    continuous: z.boolean().default(false),
     status: z.enum(["DRAFT", "ACTIVE", "CLOSED", "CANCELLED"]),
     signatureDate: optionalDay,
     validFrom: optionalDay,
@@ -160,13 +161,10 @@ export const invoiceSchema = z.object({
     .default("")
     .transform((v) => v || null),
   issueDate: day,
-  orderId: optionalId,
+  orderId: idSchema,
+  amount: decimal(2, true),
   documentUrl,
   notes: optionalText,
-  items: z
-    .array(z.object({ contractItemId: idSchema, quantity: decimal(3, true) }))
-    .min(1)
-    .max(1000),
 });
 export const receiptSchema = z.object({
   invoiceId: idSchema,
@@ -175,31 +173,92 @@ export const receiptSchema = z.object({
   notes: optionalText,
 });
 export const guaranteeSchema = z.object({
-  type: shortText,
+  type: z.enum([
+    "Caução em dinheiro",
+    "Caução títulos da dívida pública",
+    "Seguro-garantia",
+    "Fiança bancária",
+    "Título de capitalização",
+  ]),
   amount: decimal(2),
   validUntil: day,
   status: z.enum(["ACTIVE", "RELEASED", "CANCELLED"]),
   documentUrl,
   notes: optionalText,
 });
-export const amendmentSchema = z.object({
+export const amendmentKinds = {
+  ADDITION: "Acréscimo",
+  SUPPRESSION: "Supressão",
+  EXTENSION: "Prorrogação",
+  RENEWAL: "Renovação",
+  MIXED: "Múltiplas Alterações",
+} as const;
+export const guaranteeTypes = [
+  "Caução em dinheiro",
+  "Caução títulos da dívida pública",
+  "Seguro-garantia",
+  "Fiança bancária",
+  "Título de capitalização",
+] as const;
+export const endorsementKinds = {
+  ADJUSTMENT: "Reajuste",
+  RENEGOTIATION: "Repactuação",
+} as const;
+export const amendmentSchema = z
+  .object({
+    reference: shortText,
+    date: day,
+    kind: z.enum(["ADDITION", "SUPPRESSION", "EXTENSION", "RENEWAL", "MIXED"]),
+    valueDelta: decimal(2, false, true).default("0"),
+    newEndDate: optionalDay,
+    documentUrl,
+    notes: optionalText,
+    items: z
+      .array(
+        z.object({
+          contractItemId: idSchema,
+          quantityDelta: decimal(3, false, true),
+          unitPriceDelta: decimal(4, false, true),
+        }),
+      )
+      .max(1000)
+      .default([]),
+  })
+  .transform((v) => ({ ...v, type: amendmentKinds[v.kind] }));
+export const endorsementSchema = z.object({
   reference: shortText,
-  date: day,
-  type: shortText,
-  valueDelta: decimal(2, false, true),
-  newEndDate: optionalDay,
+  signatureDate: day,
+  type: z.enum(["ADJUSTMENT", "RENEGOTIATION"]),
   documentUrl,
   notes: optionalText,
   items: z
-    .array(
-      z.object({
-        contractItemId: idSchema,
-        quantityDelta: decimal(3, false, true),
-        unitPriceDelta: decimal(4, false, true),
-      }),
-    )
+    .array(z.object({ contractItemId: idSchema, unitPrice: decimal(4) }))
+    .min(1)
     .max(1000),
 });
+export function roundedRatio(numerator: bigint, denominator: bigint) {
+  if (denominator <= 0n)
+    throw new BusinessError("Base inválida para cálculo percentual.");
+  return numerator < 0n
+    ? -((-numerator + denominator / 2n) / denominator)
+    : (numerator + denominator / 2n) / denominator;
+}
+export function priceFromPercent(price: string, percent: string) {
+  const p = units(price, 4);
+  const pct = units(decimal(4, false, true).parse(percent), 4);
+  if (pct < -1000000n)
+    throw new BusinessError("A variação não pode produzir preço negativo.");
+  return bounded(roundedRatio(p * (1000000n + pct), 1000000n), 4);
+}
+export function percentFromPrice(previous: string, next: string) {
+  const old = units(previous, 4),
+    current = units(next, 4);
+  return old === 0n
+    ? current === 0n
+      ? "0.0000"
+      : null
+    : fixed(roundedRatio((current - old) * 1000000n, old), 4);
+}
 // All arithmetic uses integer fixed-point units. HALF_UP once per line, then sum cents.
 export const units = (
   value: { toString(): string } | string,

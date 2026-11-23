@@ -36,6 +36,12 @@ it.each([
   "guarantee",
   "amendment",
   "cancelAmendment",
+  "endorsement",
+  "deleteContract",
+  "deleteOrder",
+  "deleteInvoice",
+  "deleteAmendment",
+  "deleteEndorsement",
 ])(
   "protege a operação administrativa %s antes de ler/gravar dados",
   async (operation) => {

@@ -2,31 +2,9 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import { beforeAll, beforeEach, afterAll, describe, it, expect } from "vitest";
 import { createDb } from "@/lib/db-client";
-import {
-  createContract,
-  updateContract,
-  updateOrder,
-  copySourceItems,
-  deleteContractItem,
-  saveContractItem,
-  createOrder,
-  updateSupply,
-  cancelOrder,
-  createInvoice,
-  cancelInvoice,
-  createReceipt,
-  saveGuarantee,
-  createAmendment,
-  cancelAmendment,
-  getContract,
-  listContracts,
-  contractValueCheck,
-  contractBalances,
-  getContractStats,
-} from "@/server/contracts";
+import * as service from "@/server/contracts";
 import { orderStatus } from "@/lib/contracts";
 import { deleteOpportunity } from "@/server/opportunities";
-import { saveOrganization } from "@/server/organizations";
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/(_test|govnex-test)/.test(new URL(url).pathname))
   throw new Error("Banco descartável _test obrigatório.");
@@ -39,6 +17,9 @@ async function clear() {
     db.salesInvoice.deleteMany(),
     db.supplyOrderItem.deleteMany(),
     db.supplyOrder.deleteMany(),
+    db.contractPeriod.deleteMany(),
+    db.contractEndorsementItem.deleteMany(),
+    db.contractEndorsement.deleteMany(),
     db.contractAmendmentItem.deleteMany(),
     db.contractAmendment.deleteMany(),
     db.contractGuarantee.deleteMany(),
@@ -79,11 +60,7 @@ afterAll(async () => {
   await db.user.delete({ where: { id: actorId } });
   await db.$disconnect();
 });
-const instrument = (
-  type = "TERM",
-  reference = "CT-001",
-  amount = "1000,00",
-) => ({
+const header = (type = "TERM", reference = "CT-001", amount = "1000") => ({
   instrumentType: type,
   reference,
   issuedAt: "2026-11-01",
@@ -93,741 +70,864 @@ const instrument = (
     ? {
         signatureDate: "2026-11-01",
         validFrom: "2026-11-01",
-        validUntil: "2027-11-01",
+        validUntil: "2027-10-31",
       }
     : {}),
 });
-const item = (quantity = "10", unitPrice = "100") => ({
-  number: 1,
-  description: "Licença de software",
+const item = (quantity = "100", unitPrice = "10", number = 1) => ({
+  number,
+  description: `Produto contratado ${number}`,
   unit: "UN",
   quantity,
   unitPrice,
 });
-const create = async (type = "TERM", amount = "1000,00") =>
-  createContract(db, actorId, {
-    instrument: instrument(type, "CT-001", amount),
+const create = async (type = "TERM", continuous = false, amount = "1000") =>
+  service.createContract(db, actorId, {
+    instrument: { ...header(type, "CT-001", amount), continuous },
     organizationId: agencyId,
     items: [item()],
   });
-const current = async (id: string) => (await getContract(db, id))!;
-const v = async (id: string) => (await current(id)).case.version;
-const lines = async (id: string, quantity = "3") => [
+const current = async (id: string) => (await service.getContract(db, id))!;
+const version = async (id: string) => (await current(id)).case.version;
+const balance = async (id: string) =>
+  service.contractBalances((await current(id)).case);
+const rows = async (id: string, quantity = "10") => [
   { contractItemId: (await current(id)).case.items[0].id, quantity },
 ];
-const order = async (id: string, quantity = "3") =>
-  createOrder(db, actorId, id, await v(id), {
-    reference: "P-01",
-    orderDate: "2026-11-02",
-    items: await lines(id, quantity),
+const order = async (
+  id: string,
+  quantity = "10",
+  date = "2026-11-02",
+  reference = "P-01",
+) =>
+  service.createOrder(db, actorId, id, await version(id), {
+    orderDate: date,
+    reference,
+    items: await rows(id, quantity),
   });
 const invoice = async (
   id: string,
-  quantity = "2",
-  orderId?: string,
+  orderId: string,
+  amount = "100",
   reference = "NF-01",
 ) =>
-  createInvoice(db, actorId, id, await v(id), {
+  service.createInvoice(db, actorId, id, await version(id), {
+    orderId,
+    amount,
     reference,
     issueDate: "2026-11-03",
-    orderId,
-    items: await lines(id, quantity),
   });
+const receipt = async (id: string, invoiceId: string, amount = "50") =>
+  service.createReceipt(db, actorId, id, await version(id), {
+    invoiceId,
+    amount,
+    date: "2026-11-04",
+  });
+const amendment = async (
+  id: string,
+  kind = "ADDITION",
+  quantityDelta = "10",
+  unitPriceDelta = "0",
+  reference = "AD-01",
+  date = "2026-11-05",
+  newEndDate = "",
+) =>
+  service.createAmendment(db, actorId, id, await version(id), {
+    reference,
+    date,
+    kind,
+    valueDelta: "0",
+    newEndDate,
+    items:
+      quantityDelta !== "0" || unitPriceDelta !== "0"
+        ? [
+            {
+              contractItemId: (await current(id)).case.items[0].id,
+              quantityDelta,
+              unitPriceDelta,
+            },
+          ]
+        : [],
+  });
+const endorsement = async (
+  id: string,
+  unitPrice = "11",
+  reference = "AP-01",
+  signatureDate = "2026-11-06",
+) =>
+  service.createEndorsement(db, actorId, id, await version(id), {
+    reference,
+    signatureDate,
+    type: "ADJUSTMENT",
+    items: [
+      { contractItemId: (await current(id)).case.items[0].id, unitPrice },
+    ],
+  });
+const confirmed = { confirmed: true };
 describe.sequential(
-  "Contratos e fornecimento: saldos reais e histórico",
+  "Contratos: períodos, renovação, apostilamento, financeiro e exclusões",
   () => {
-    it("exige escolha do instrumento e vigência apenas no Termo", async () => {
+    it("exige o instrumento e solicita assinatura apenas no Termo", async () => {
       await expect(
-        createContract(db, actorId, {
-          instrument: { ...instrument(), instrumentType: "" },
+        service.createContract(db, actorId, {
+          instrument: { ...header(), instrumentType: "" },
           organizationId: agencyId,
         }),
       ).rejects.toThrow();
       await expect(
-        createContract(db, actorId, {
-          instrument: { ...instrument(), validUntil: "" },
+        service.createContract(db, actorId, {
+          instrument: { ...header(), signatureDate: "" },
           organizationId: agencyId,
         }),
       ).rejects.toThrow();
       const ne = await create("COMMITMENT");
       expect(ne.validUntil).toBeNull();
       expect(ne.signatureDate).toBeNull();
-      expect(await db.supplyOrder.count()).toBe(0);
+      expect((await current(ne.id)).case.periods).toHaveLength(1);
     });
-    it("recusa agrupamento e registra empenho contábil apenas no Pedido", async () => {
+    it("mantém contratos independentes e rejeita agrupamentos antigos em novos cadastros", async () => {
       const term = await create();
       await expect(
-        createContract(db, actorId, {
-          instrument: instrument("COMMITMENT", "NE-01", "400"),
+        service.createContract(db, actorId, {
+          instrument: header("COMMITMENT", "NE-02"),
           caseId: term.caseId,
         }),
       ).rejects.toThrow("independente");
-      const p = await createOrder(db, actorId, term.id, await v(term.id), {
-        orderDate: "2026-11-02",
-        commitmentNumber: "NE-CONTABIL",
-        commitmentIssuedAt: "2026-11-01",
-        items: await lines(term.id, "2"),
-      });
-      expect(p.commitmentNumber).toBe("NE-CONTABIL");
-      expect(await db.contract.count()).toBe(1);
-    });
-    it("Termo e empenho substitutivo são contratos independentes", async () => {
-      const term = await create();
-      const ne = await createContract(db, actorId, {
-        instrument: instrument("COMMITMENT", "NE-02", "600"),
+      const ne = await service.createContract(db, actorId, {
+        instrument: header("COMMITMENT", "NE-02"),
         organizationId: agencyId,
-        items: [item("6")],
+        items: [item()],
       });
       expect(ne.caseId).not.toBe(term.caseId);
-      expect((await getContractStats(db)).contracted).toBe(160000n);
+      expect((await service.getContractStats(db)).contracted).toBe(200000n);
     });
-    it("recusa novos vínculos de instrumentos também pelo backend", async () => {
+    it("corrige valor original com execução e aditivo sem modificar valor atualizado", async () => {
       const term = await create();
-      await expect(
-        createContract(db, actorId, {
-          instrument: instrument("TERM", "CT-02"),
-          caseId: term.caseId,
-        }),
-      ).rejects.toThrow("independente");
-      await expect(
-        createContract(db, actorId, {
-          instrument: {
-            ...instrument("COMMITMENT", "NE-01"),
-            parentTermId: term.id,
-          },
-          organizationId: agencyId,
-        }),
-      ).rejects.toThrow();
-    });
-    it("reserva pedidos, calcula fornecimento parcial e mantém consumo ao cancelar", async () => {
-      const term = await create();
-      const p = await order(term.id, "8");
-      let c = (await current(term.id)).case;
-      expect(orderStatus(false, c.orders[0].items)).toBe("Pendente");
-      expect(contractBalances(c).items[0].available).toBe(2000n);
-      await expect(order(term.id, "3")).rejects.toThrow("saldo");
-      await updateSupply(db, actorId, term.id, c.version, {
-        orderId: p.id,
-        items: [{ id: c.orders[0].items[0].id, suppliedQuantity: "3" }],
-      });
-      c = (await current(term.id)).case;
-      expect(orderStatus(false, c.orders[0].items)).toBe(
-        "Parcialmente fornecido",
+      await order(term.id);
+      await amendment(term.id);
+      expect((await current(term.id)).currentAmount!.toFixed(2)).toBe(
+        "1100.00",
       );
-      await cancelOrder(db, actorId, term.id, c.version, p.id);
-      c = (await current(term.id)).case;
-      expect(contractBalances(c).items[0].available).toBe(7000n);
-      expect(orderStatus(true, c.orders[0].items)).toBe("Cancelado");
+      await service.updateContract(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        { ...header("TERM", "CT-001", "9999"), continuous: false },
+      );
+      const c = await current(term.id);
+      expect(c.amount!.toFixed(2)).toBe("9999.00");
+      expect(c.initialCurrentAmount!.toFixed(2)).toBe("1000.00");
+      expect(c.currentAmount!.toFixed(2)).toBe("1100.00");
+      expect(service.contractValueCheck(c.case, c.id).matches).toBe(true);
     });
-    it("recusa fornecimento acima do pedido e identifica fornecimento completo", async () => {
+    it("inicia execução automaticamente apenas depois de Pedido válido", async () => {
+      const term = await service.createContract(db, actorId, {
+        instrument: { ...header(), status: "DRAFT" },
+        organizationId: agencyId,
+        items: [item()],
+      });
+      await expect(order(term.id, "101")).rejects.toThrow("saldo");
+      expect((await current(term.id)).status).toBe("DRAFT");
+      await order(term.id);
+      expect((await current(term.id)).status).toBe("ACTIVE");
+    });
+    it("preenche empenho substitutivo e preserva snapshot do preço no Pedido", async () => {
+      const ne = await create("COMMITMENT");
+      const p = await order(ne.id);
+      expect(p.commitmentNumber).toBe(ne.reference);
+      expect(p.commitmentIssuedAt!.toISOString().slice(0, 10)).toBe(
+        "2026-11-01",
+      );
+      const row = (await current(ne.id)).case.orders[0].items[0];
+      expect(row.unitPrice!.toFixed(4)).toBe("10.0000");
+    });
+    it("reserva quantidades e registra fornecimento parcial e completo", async () => {
       const term = await create();
-      const p = await order(term.id, "3");
-      const c = (await current(term.id)).case;
-      const row = c.orders[0].items[0];
+      const p = await order(term.id, "90");
+      const row = (await current(term.id)).case.orders[0].items[0];
+      expect((await balance(term.id)).items[0].available).toBe(10000n);
+      await service.updateSupply(db, actorId, term.id, await version(term.id), {
+        orderId: p.id,
+        items: [{ id: row.id, suppliedQuantity: "30" }],
+      });
+      expect(
+        orderStatus(false, (await current(term.id)).case.orders[0].items),
+      ).toBe("Parcialmente fornecido");
       await expect(
-        updateSupply(db, actorId, term.id, c.version, {
+        service.updateSupply(db, actorId, term.id, await version(term.id), {
           orderId: p.id,
-          items: [{ id: row.id, suppliedQuantity: "3,001" }],
+          items: [{ id: row.id, suppliedQuantity: "91" }],
         }),
       ).rejects.toThrow("excede");
-      await updateSupply(db, actorId, term.id, c.version, {
+      await service.updateSupply(db, actorId, term.id, await version(term.id), {
         orderId: p.id,
-        items: [{ id: row.id, suppliedQuantity: "3" }],
+        items: [{ id: row.id, suppliedQuantity: "90" }],
       });
       expect(
         orderStatus(false, (await current(term.id)).case.orders[0].items),
       ).toBe("Fornecido");
     });
-    it("permite faturamento parcial sem pedido nem entrega e impede excesso total", async () => {
+    it("renova 100 + 10 com saldo 20 para exatamente 110 disponíveis", async () => {
+      const term = await create("TERM", true);
+      await amendment(term.id);
+      const p = await order(term.id, "90");
+      expect((await balance(term.id)).items[0].available).toBe(20000n);
+      await amendment(
+        term.id,
+        "RENEWAL",
+        "0",
+        "0",
+        "REN-01",
+        "2027-10-31",
+        "2028-10-31",
+      );
+      const b = await balance(term.id);
+      expect(b.currentPeriod.number).toBe(2);
+      expect(b.items[0].effectiveQuantity).toBe("110.000");
+      expect(b.items[0].available).toBe(110000n);
+      expect(b.items[0].effectivePrice).toBe("10.0000");
+      expect(b.value).toBe(110000n);
+      expect(
+        (await current(term.id)).case.orders.find((o) => o.id === p.id)!
+          .periodId,
+      ).not.toBe(b.currentPeriod.id);
+      await order(term.id, "110", "2027-11-01", "P-NOVO");
+      expect((await balance(term.id)).items[0].available).toBe(0n);
+    });
+    it("repete renovação sem acumular saldos de períodos anteriores", async () => {
+      const term = await create("TERM", true);
+      await amendment(term.id);
+      await amendment(
+        term.id,
+        "RENEWAL",
+        "0",
+        "0",
+        "REN-01",
+        "2027-10-31",
+        "2028-10-31",
+      );
+      await order(term.id, "100", "2027-11-01");
+      await amendment(
+        term.id,
+        "RENEWAL",
+        "0",
+        "0",
+        "REN-02",
+        "2028-10-31",
+        "2029-10-31",
+      );
+      expect((await balance(term.id)).items[0].available).toBe(110000n);
+      expect((await current(term.id)).case.periods).toHaveLength(3);
+    });
+    it("renovação exige Continuado e não permite alterar preço/quantidade no mesmo ato", async () => {
       const term = await create();
-      const nf = await invoice(term.id, "4");
-      expect(nf.amount.toFixed(2)).toBe("400.00");
-      await invoice(term.id, "6", undefined, "NF-02");
       await expect(
-        invoice(term.id, "0,001", undefined, "NF-03"),
-      ).rejects.toThrow("saldo");
-      expect(contractBalances((await current(term.id)).case).remaining).toBe(
-        0n,
+        amendment(
+          term.id,
+          "RENEWAL",
+          "0",
+          "0",
+          "REN",
+          "2027-10-31",
+          "2028-10-31",
+        ),
+      ).rejects.toThrow("Continuado");
+      await service.updateContract(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        { ...header(), continuous: true },
+      );
+      await expect(
+        amendment(
+          term.id,
+          "RENEWAL",
+          "1",
+          "0",
+          "REN",
+          "2027-10-31",
+          "2028-10-31",
+        ),
+      ).rejects.toThrow("não alteram");
+      expect((await current(term.id)).case.periods).toHaveLength(1);
+    });
+    it("prorrogação muda vigência e conserva o saldo remanescente", async () => {
+      const term = await create();
+      await order(term.id, "80");
+      await amendment(
+        term.id,
+        "EXTENSION",
+        "0",
+        "0",
+        "PROR",
+        "2026-11-05",
+        "2028-10-31",
+      );
+      const b = await balance(term.id);
+      expect(b.currentPeriod.number).toBe(1);
+      expect(b.items[0].available).toBe(20000n);
+      expect(b.currentPeriod.endsAt!.toISOString().slice(0, 10)).toBe(
+        "2028-10-31",
       );
     });
-    it("impede excesso do pedido e vínculo a pedido de outro negócio", async () => {
+    it("valida os sinais de Acréscimo e Supressão e o saldo utilizado", async () => {
       const term = await create();
-      const p = await order(term.id, "3");
-      await invoice(term.id, "2", p.id);
-      await expect(invoice(term.id, "2", p.id, "NF-02")).rejects.toThrow(
-        "pedido",
+      await expect(amendment(term.id, "ADDITION", "-1")).rejects.toThrow(
+        "Acréscimo",
       );
-      const other = await createContract(db, actorId, {
-        instrument: instrument("COMMITMENT", "NE-OUTRO"),
+      await expect(amendment(term.id, "SUPPRESSION", "1")).rejects.toThrow(
+        "Supressão",
+      );
+      await order(term.id, "90");
+      await expect(amendment(term.id, "SUPPRESSION", "-11")).rejects.toThrow(
+        "saldo",
+      );
+      await amendment(term.id, "SUPPRESSION", "-10");
+      expect((await balance(term.id)).items[0].effectiveQuantity).toBe(
+        "90.000",
+      );
+      expect((await current(term.id)).currentAmount!.toFixed(2)).toBe("900.00");
+    });
+    it("apostilamento grava somente novo preço e atualiza valor sem reescrever Pedido antigo", async () => {
+      const term = await create();
+      const p = await order(term.id, "10");
+      await endorsement(term.id, "11.2500");
+      const c = await current(term.id);
+      expect(c.amount!.toFixed(2)).toBe("1000.00");
+      expect(c.currentAmount!.toFixed(2)).toBe("1125.00");
+      expect(c.case.items[0].unitPrice.toFixed(4)).toBe("10.0000");
+      expect(
+        c.case.orders
+          .find((o) => o.id === p.id)!
+          .items[0].unitPrice!.toFixed(4),
+      ).toBe("10.0000");
+      expect(Object.keys(c.case.endorsements[0].items[0])).not.toContain(
+        "percent",
+      );
+      const next = await order(term.id, "1", "2026-11-07", "P-02");
+      expect(
+        (await current(term.id)).case.orders
+          .find((o) => o.id === next.id)!
+          .items[0].unitPrice!.toFixed(4),
+      ).toBe("11.2500");
+    });
+    it("renovação conserva preço atualizado por apostilamento e novo quantitativo", async () => {
+      const term = await create("TERM", true);
+      await amendment(term.id);
+      await endorsement(term.id, "12");
+      await amendment(
+        term.id,
+        "RENEWAL",
+        "0",
+        "0",
+        "REN",
+        "2027-10-31",
+        "2028-10-31",
+      );
+      const b = await balance(term.id);
+      expect(b.items[0].available).toBe(110000n);
+      expect(b.items[0].effectivePrice).toBe("12.0000");
+      expect(b.value).toBe(132000n);
+    });
+    it("notas fiscais registram valor e Pedido sem criar relação de itens", async () => {
+      const term = await create();
+      const p = await order(term.id, "10");
+      const nf = await invoice(term.id, p.id, "50");
+      expect(nf.amount.toFixed(2)).toBe("50.00");
+      expect(await db.salesInvoiceItem.count()).toBe(0);
+      await invoice(term.id, p.id, "50", "NF-02");
+      await expect(invoice(term.id, p.id, "0.01", "NF-03")).rejects.toThrow(
+        "Pedido",
+      );
+      await expect(
+        service.createInvoice(db, actorId, term.id, await version(term.id), {
+          reference: "SEM-PEDIDO",
+          issueDate: "2026-11-03",
+          amount: "1",
+        }),
+      ).rejects.toThrow();
+    });
+    it("impede NF em Pedido de outro contrato e em Pedido cancelado", async () => {
+      const term = await create();
+      const p = await order(term.id);
+      const other = await service.createContract(db, actorId, {
+        instrument: header("COMMITMENT", "NE-02"),
         organizationId: agencyId,
         items: [item()],
       });
-      await expect(invoice(other.id, "1", p.id)).rejects.toThrow(
-        "mesmo negócio",
+      await expect(invoice(other.id, p.id)).rejects.toThrow("mesmo contrato");
+      await service.cancelOrder(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        p.id,
       );
+      await expect(invoice(term.id, p.id)).rejects.toThrow("válido");
     });
-    it("limita faturamento do empenho substitutivo ao seu próprio valor", async () => {
-      const ne = await create("COMMITMENT", "200");
-      await invoice(ne.id, "2");
-      await expect(invoice(ne.id, "1", undefined, "NF-02")).rejects.toThrow(
-        "Nota de Empenho",
-      );
-      expect(contractBalances((await current(ne.id)).case).invoiced).toBe(
-        20000n,
-      );
-    });
-    it("recebe parcialmente, impede excesso e preserva recebimentos ao encerrar", async () => {
+    it("recebimentos parciais continuam disponíveis em contrato encerrado", async () => {
       const term = await create();
-      const nf = await invoice(term.id, "4");
-      await createReceipt(db, actorId, term.id, await v(term.id), {
-        invoiceId: nf.id,
-        date: "2026-11-04",
-        amount: "150",
-      });
-      expect(contractBalances((await current(term.id)).case).receivable).toBe(
-        25000n,
-      );
+      const p = await order(term.id);
+      const nf = await invoice(term.id, p.id);
+      await receipt(term.id, nf.id);
+      await expect(receipt(term.id, nf.id, "50.01")).rejects.toThrow("excede");
       await expect(
-        createReceipt(db, actorId, term.id, await v(term.id), {
-          invoiceId: nf.id,
-          date: "2026-11-04",
-          amount: "250,01",
-        }),
-      ).rejects.toThrow("excede");
-      await expect(
-        cancelInvoice(db, actorId, term.id, await v(term.id), nf.id),
-      ).rejects.toThrow("recebimentos");
-      await updateContract(db, actorId, term.id, await v(term.id), {
-        ...instrument(),
-        status: "CLOSED",
-      });
-      await createReceipt(db, actorId, term.id, await v(term.id), {
-        invoiceId: nf.id,
-        date: "2026-11-05",
-        amount: "250",
-      });
-      expect(contractBalances((await current(term.id)).case).receivable).toBe(
-        0n,
-      );
-      await expect(order(term.id)).rejects.toThrow("encerrado");
-    });
-    it("cancela nota sem recebimento e libera apenas o faturamento", async () => {
-      const term = await create();
-      await order(term.id, "3");
-      const nf = await invoice(term.id, "3");
-      await cancelInvoice(db, actorId, term.id, await v(term.id), nf.id);
-      const b = contractBalances((await current(term.id)).case);
-      expect(b.invoiced).toBe(0n);
-      expect(b.items[0].reserved).toBe(3000n);
-    });
-    it("preserva originais e snapshots anteriores ao aditivo", async () => {
-      const term = await create();
-      const nf = await invoice(term.id, "2");
-      const itemId = (await current(term.id)).case.items[0].id;
-      await createAmendment(db, actorId, term.id, await v(term.id), {
-        reference: "AD-01",
-        date: "2026-11-06",
-        type: "Acréscimo",
-        valueDelta: "210",
-        newEndDate: "2028-11-01",
-        items: [
-          { contractItemId: itemId, quantityDelta: "1", unitPriceDelta: "10" },
-        ],
-      });
-      const c = (await current(term.id)).case;
-      const b = contractBalances(c);
-      expect(c.instruments[0].amount!.toFixed(2)).toBe("1000.00");
-      expect(c.items[0].quantity.toFixed(3)).toBe("10.000");
-      expect(b.items[0].effectiveQuantity).toBe("11.000");
-      expect(b.items[0].effectivePrice).toBe("110.0000");
-      expect(b.value).toBe(121000n);
-      expect(
-        (
-          await db.salesInvoice.findUniqueOrThrow({
-            where: { id: nf.id },
-            include: { items: true },
-          })
-        ).items[0].unitPrice.toFixed(4),
-      ).toBe("100.0000");
-      await expect(
-        updateContract(
+        service.cancelInvoice(
           db,
           actorId,
           term.id,
-          c.version,
-          instrument("TERM", "CT-001", "1210"),
+          await version(term.id),
+          nf.id,
         ),
-      ).rejects.toThrow("aditivo");
+      ).rejects.toThrow("recebimentos");
+      await service.updateContract(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        { ...header(), status: "CLOSED" },
+      );
+      await receipt(term.id, nf.id);
+      expect((await balance(term.id)).receivable).toBe(0n);
+      await expect(order(term.id)).rejects.toThrow("encerrado");
     });
-    it("não permite redução abaixo de quantidades e valores já consumidos", async () => {
-      const term = await create();
-      await order(term.id, "8");
-      await invoice(term.id, "5");
-      const itemId = (await current(term.id)).case.items[0].id;
-      await expect(
-        createAmendment(db, actorId, term.id, await v(term.id), {
-          reference: "AD-01",
-          date: "2026-11-06",
-          type: "Redução",
-          valueDelta: "0",
-          items: [
-            {
-              contractItemId: itemId,
-              quantityDelta: "-3",
-              unitPriceDelta: "0",
-            },
-          ],
-        }),
-      ).rejects.toThrow("saldo");
-      await expect(
-        createAmendment(db, actorId, term.id, await v(term.id), {
-          reference: "AD-01",
-          date: "2026-11-06",
-          type: "Redução",
-          valueDelta: "-501",
-          items: [],
-        }),
-      ).rejects.toThrow("faturado");
-      expect(await db.contractAmendment.count()).toBe(0);
+    it("faturamento tardio do Pedido anterior não consome o orçamento renovado", async () => {
+      const term = await create("TERM", true);
+      const p = await order(term.id, "90");
+      await amendment(
+        term.id,
+        "RENEWAL",
+        "0",
+        "0",
+        "REN",
+        "2027-10-31",
+        "2028-10-31",
+      );
+      const nf = await service.createInvoice(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        {
+          orderId: p.id,
+          amount: "900",
+          reference: "NF-TARDIA",
+          issueDate: "2027-11-02",
+        },
+      );
+      expect(nf.periodId).toBe(p.periodId);
+      const b = await balance(term.id);
+      expect(b.invoiced).toBe(90000n);
+      expect(b.periodInvoiced).toBe(0n);
+      expect(b.remaining).toBe(100000n);
     });
-    it("impede cancelar aditivo cujos saldos já foram usados e proíbe aditivo em NE", async () => {
-      const term = await create();
-      const itemId = (await current(term.id)).case.items[0].id;
-      const ad = await createAmendment(db, actorId, term.id, await v(term.id), {
-        reference: "AD-01",
-        date: "2026-11-06",
-        type: "Acréscimo",
-        valueDelta: "100",
-        items: [
-          { contractItemId: itemId, quantityDelta: "1", unitPriceDelta: "0" },
-        ],
-      });
-      await order(term.id, "11");
+    it("não aumenta Pedidos do período expirado nem aceita novos pedidos retroativos", async () => {
+      const term = await create("TERM", true);
+      const p = await order(term.id, "10");
+      await amendment(
+        term.id,
+        "RENEWAL",
+        "0",
+        "0",
+        "REN",
+        "2027-10-31",
+        "2028-10-31",
+      );
+      await expect(order(term.id, "1", "2026-11-02")).rejects.toThrow(
+        "período atual",
+      );
       await expect(
-        cancelAmendment(db, actorId, term.id, await v(term.id), ad.id),
+        service.updateOrder(
+          db,
+          actorId,
+          term.id,
+          await version(term.id),
+          { orderDate: "2026-11-02", items: await rows(term.id, "11") },
+          p.id,
+        ),
+      ).rejects.toThrow("encerrado");
+    });
+    it("aceita apenas opções legais de garantia para novos registros", async () => {
+      const term = await create();
+      const base = { amount: "50", validUntil: "2027-10-31", status: "ACTIVE" };
+      await expect(
+        service.saveGuarantee(db, actorId, term.id, await version(term.id), {
+          ...base,
+          type: "Outra",
+        }),
+      ).rejects.toThrow();
+      const g = await service.saveGuarantee(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        { ...base, type: "Seguro-garantia" },
+      );
+      expect(g.type).toBe("Seguro-garantia");
+    });
+    it("preserva chave da NF e rejeita conteúdo não alfanumérico", async () => {
+      const term = await create();
+      const p = await order(term.id);
+      const nf = await service.createInvoice(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        {
+          orderId: p.id,
+          amount: "10",
+          reference: "NF-KEY",
+          issueDate: "2026-11-03",
+          accessKey: "AbC123",
+        },
+      );
+      expect(nf.accessKey).toBe("AbC123");
+      await expect(
+        service.createInvoice(db, actorId, term.id, await version(term.id), {
+          orderId: p.id,
+          amount: "10",
+          reference: "NF-KEY2",
+          issueDate: "2026-11-03",
+          accessKey: "123/456",
+        }),
+      ).rejects.toThrow();
+    });
+    it("exclusões exigem confirmação explícita e versão atual", async () => {
+      const term = await create();
+      const p = await order(term.id);
+      const nf = await invoice(term.id, p.id);
+      await expect(
+        service.deleteInvoice(
+          db,
+          actorId,
+          term.id,
+          await version(term.id),
+          nf.id,
+          { confirmed: false },
+        ),
+      ).rejects.toThrow();
+      await expect(
+        service.deleteOrder(db, actorId, term.id, 999, p.id, confirmed),
+      ).rejects.toThrow("alterados");
+      await expect(
+        service.deleteContract(
+          db,
+          actorId,
+          term.id,
+          await version(term.id),
+          {},
+        ),
+      ).rejects.toThrow();
+      expect(await db.salesInvoice.count()).toBe(1);
+    });
+    it("exclui NF e recebimentos apenas do documento selecionado, com auditoria", async () => {
+      const term = await create();
+      const p = await order(term.id, "20");
+      const nf = await invoice(term.id, p.id);
+      await receipt(term.id, nf.id);
+      const second = await invoice(term.id, p.id, "100", "NF-02");
+      await service.deleteInvoice(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        nf.id,
+        confirmed,
+      );
+      expect(await db.invoiceReceipt.count()).toBe(0);
+      expect((await db.salesInvoice.findMany()).map((n) => n.id)).toEqual([
+        second.id,
+      ]);
+      expect((await balance(term.id)).receivable).toBe(10000n);
+      expect(
+        await db.auditLog.count({
+          where: { entityId: term.caseId, action: "DELETE_INVOICE" },
+        }),
+      ).toBe(1);
+    });
+    it("exclui Pedido com suas notas e recebimentos liberando a quantidade", async () => {
+      const term = await create();
+      const p = await order(term.id, "20");
+      const nf = await invoice(term.id, p.id);
+      await receipt(term.id, nf.id);
+      await service.deleteOrder(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        p.id,
+        confirmed,
+      );
+      expect(await db.supplyOrder.count()).toBe(0);
+      expect(await db.salesInvoice.count()).toBe(0);
+      expect(await db.invoiceReceipt.count()).toBe(0);
+      expect((await balance(term.id)).items[0].available).toBe(100000n);
+    });
+    it("exclui aditivo mais recente recalculando valor e impede saldo negativo", async () => {
+      const term = await create();
+      const ad = await amendment(term.id);
+      await service.deleteAmendment(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        ad.id,
+        confirmed,
+      );
+      expect((await current(term.id)).currentAmount!.toFixed(2)).toBe(
+        "1000.00",
+      );
+      const next = await amendment(term.id);
+      await order(term.id, "110");
+      await expect(
+        service.deleteAmendment(
+          db,
+          actorId,
+          term.id,
+          await version(term.id),
+          next.id,
+          confirmed,
+        ),
       ).rejects.toThrow("saldo");
-      const ne = await createContract(db, actorId, {
-        instrument: instrument("COMMITMENT", "NE-01"),
+      expect(await db.contractAmendment.count()).toBe(1);
+    });
+    it("impede apagar alteração anterior a apostilamento ou aditivo posterior", async () => {
+      const term = await create();
+      const ad = await amendment(term.id);
+      const ap = await endorsement(term.id);
+      await expect(
+        service.deleteAmendment(
+          db,
+          actorId,
+          term.id,
+          await version(term.id),
+          ad.id,
+          confirmed,
+        ),
+      ).rejects.toThrow("posteriores");
+      await service.deleteEndorsement(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        ap.id,
+        confirmed,
+      );
+      expect((await balance(term.id)).items[0].effectivePrice).toBe("10.0000");
+      await service.deleteAmendment(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        ad.id,
+        confirmed,
+      );
+      expect((await balance(term.id)).value).toBe(100000n);
+    });
+    it("retorna ao período anterior ao excluir renovação ainda sem utilização", async () => {
+      const term = await create("TERM", true);
+      await amendment(term.id);
+      await order(term.id, "90");
+      const renewal = await amendment(
+        term.id,
+        "RENEWAL",
+        "0",
+        "0",
+        "REN",
+        "2027-10-31",
+        "2028-10-31",
+      );
+      await service.deleteAmendment(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        renewal.id,
+        confirmed,
+      );
+      expect((await balance(term.id)).currentPeriod.number).toBe(1);
+      expect((await balance(term.id)).items[0].available).toBe(20000n);
+      expect(await db.contractPeriod.count()).toBe(1);
+    });
+    it("não exclui renovação cujo novo período possui Pedido", async () => {
+      const term = await create("TERM", true);
+      const renewal = await amendment(
+        term.id,
+        "RENEWAL",
+        "0",
+        "0",
+        "REN",
+        "2027-10-31",
+        "2028-10-31",
+      );
+      await order(term.id, "1", "2027-11-01");
+      await expect(
+        service.deleteAmendment(
+          db,
+          actorId,
+          term.id,
+          await version(term.id),
+          renewal.id,
+          confirmed,
+        ),
+      ).rejects.toThrow("novo período");
+      await expect(
+        service.updateContract(db, actorId, term.id, await version(term.id), {
+          ...header(),
+          continuous: false,
+        }),
+      ).rejects.toThrow("continuada");
+    });
+    it("exclui contrato com todos os dependentes, preservando auditoria e origem", async () => {
+      const term = await create("TERM", true);
+      const p = await order(term.id);
+      const nf = await invoice(term.id, p.id);
+      await receipt(term.id, nf.id);
+      await amendment(term.id);
+      await endorsement(term.id);
+      await service.saveGuarantee(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        {
+          type: "Fiança bancária",
+          amount: "50",
+          validUntil: "2027-10-31",
+          status: "ACTIVE",
+        },
+      );
+      await service.deleteContract(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        confirmed,
+      );
+      for (const n of [
+        await db.contract.count(),
+        await db.contractCase.count(),
+        await db.contractPeriod.count(),
+        await db.salesInvoice.count(),
+        await db.invoiceReceipt.count(),
+        await db.contractAmendment.count(),
+        await db.contractEndorsement.count(),
+        await db.contractGuarantee.count(),
+      ])
+        expect(n).toBe(0);
+      expect(await db.organization.count({ where: { id: agencyId } })).toBe(1);
+      expect(
+        (
+          await db.auditLog.findFirstOrThrow({
+            where: { entityId: term.caseId, action: "DELETE_CONTRACT" },
+          })
+        ).changes,
+      ).toMatchObject({ after: null });
+    });
+    it("recusa exclusão de documento pertencente a outro contrato", async () => {
+      const term = await create();
+      const p = await order(term.id);
+      const other = await service.createContract(db, actorId, {
+        instrument: header("COMMITMENT", "NE-02"),
         organizationId: agencyId,
         items: [item()],
       });
       await expect(
-        createAmendment(db, actorId, ne.id, await v(ne.id), {
-          reference: "AD-NE",
-          date: "2026-11-06",
-          type: "Prazo",
-          valueDelta: "0",
-          newEndDate: "2028-01-01",
-          items: [],
-        }),
-      ).rejects.toThrow("exclusivos");
+        service.deleteOrder(
+          db,
+          actorId,
+          other.id,
+          await version(other.id),
+          p.id,
+          confirmed,
+        ),
+      ).rejects.toThrow("não pertence");
+      expect(await db.supplyOrder.count()).toBe(1);
     });
-    it("registra garantia opcional e audita atualização da situação", async () => {
+    it("serializa pedidos concorrentes da mesma versão sem ultrapassar saldo", async () => {
       const term = await create();
-      expect(await db.contractGuarantee.count()).toBe(0);
-      const value = {
-        type: "Seguro garantia",
-        amount: "50",
-        validUntil: "2027-11-01",
-        status: "ACTIVE",
+      const v = await version(term.id);
+      const data = {
+        orderDate: "2026-11-02",
+        items: await rows(term.id, "90"),
       };
-      const g = await saveGuarantee(
-        db,
-        actorId,
-        term.id,
-        await v(term.id),
-        value,
-      );
-      await saveGuarantee(
-        db,
-        actorId,
-        term.id,
-        await v(term.id),
-        { ...value, status: "RELEASED" },
-        g.id,
-      );
-      expect(
-        (await db.contractGuarantee.findUniqueOrThrow({ where: { id: g.id } }))
-          .status,
-      ).toBe("RELEASED");
-      expect(
-        await db.auditLog.count({
-          where: { entityId: term.caseId, action: "SAVE_GUARANTEE" },
-        }),
-      ).toBe(2);
+      const result = await Promise.allSettled([
+        service.createOrder(db, actorId, term.id, v, data),
+        service.createOrder(db, actorId, term.id, v, data),
+      ]);
+      expect(result.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     });
-    it("usa snapshot vencedor, controla alocação e preserva depois de arquivar origem", async () => {
+    it("cópia da proposta vencedora preserva o snapshot e protege a origem", async () => {
       const source = await db.opportunity.create({
         data: {
-          organizationId: agencyId,
           reference: "LIC-01",
-          subject: "Compra de software",
+          subject: "Compra",
+          organizationId: agencyId,
           items: {
             create: {
               number: 1,
-              description: "Produto vencedor",
+              description: "Item vencedor",
               unit: "LIC",
               quantity: "10",
-              winningUnitPrice: "25.1234",
               winner: true,
+              winningUnitPrice: "25.1234",
             },
           },
         },
         include: { items: true },
       });
-      const input = {
-        instrument: instrument(),
+      const term = await service.createContract(db, actorId, {
+        instrument: header(),
         opportunityId: source.id,
-        items: [{ ...item("7"), opportunityItemId: source.items[0].id }],
-      };
-      const term = await createContract(db, actorId, input);
-      expect((await current(term.id)).case.items[0].description).toBe(
-        "Produto vencedor",
-      );
-      expect((await current(term.id)).case.items[0].unitPrice.toFixed(4)).toBe(
-        "25.1234",
-      );
-      await expect(
-        createContract(db, actorId, {
-          ...input,
-          instrument: instrument("COMMITMENT", "NE-02"),
-          items: [{ ...item("4"), opportunityItemId: source.items[0].id }],
-        }),
-      ).rejects.toThrow("já vinculada");
+        items: [{ ...item("10"), opportunityItemId: source.items[0].id }],
+      });
+      const stored = await current(term.id);
+      expect(stored.case.items[0].unitPrice.toFixed(4)).toBe("25.1234");
       await expect(
         deleteOpportunity(db, actorId, source.id, source.version),
       ).rejects.toThrow("contratos associados");
-      await db.opportunity.update({
-        where: { id: source.id },
-        data: { archived: true },
-      });
       await db.opportunityItem.update({
         where: { id: source.items[0].id },
-        data: { description: "Descrição alterada", winningUnitPrice: "99" },
+        data: { winningUnitPrice: "99" },
       });
-      expect((await current(term.id)).case.items[0].description).toBe(
-        "Produto vencedor",
-      );
-      await order(term.id, "2");
+      expect((await balance(term.id)).items[0].effectivePrice).toBe("25.1234");
     });
-    it("serializa gravações concorrentes com a mesma versão sem ultrapassar saldo", async () => {
-      const term = await create();
-      const version = await v(term.id);
-      const payload = {
-        orderDate: "2026-11-02",
-        items: await lines(term.id, "8"),
-      };
-      const results = await Promise.allSettled([
-        createOrder(db, actorId, term.id, version, payload),
-        createOrder(db, actorId, term.id, version, payload),
-      ]);
-      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-      expect(await db.supplyOrder.count()).toBe(1);
-    });
-    it("mantém precisão de quatro casas e arredonda por linha, sem ponto flutuante", async () => {
-      const term = await createContract(db, actorId, {
-        instrument: instrument("COMMITMENT", "NE-01", "1"),
-        organizationId: agencyId,
-        items: [item("3", "0.1250")],
+    it("pesquisa paginada devolve até 20 órgãos e herda órgão/itens da origem", async () => {
+      await db.organization.createMany({
+        data: Array.from({ length: 23 }, (_, i) => ({
+          legalName: `Busca_${actorId}_${i}`,
+          roles: ["PUBLIC_AGENCY" as const],
+        })),
       });
-      expect((await invoice(term.id, "3")).amount.toFixed(2)).toBe("0.38");
-    });
-    it("protege órgão manual vinculado e bloqueia edições de itens após execução", async () => {
-      const term = await create();
-      const org = await db.organization.findUniqueOrThrow({
-        where: { id: agencyId },
+      const first = (await service.searchContractOptions(db, {
+        kind: "agency",
+        q: `Busca_${actorId}`,
+      })) as { items: { id: string; label: string }[]; hasMore: boolean };
+      expect(first.items).toHaveLength(20);
+      expect(first.hasMore).toBe(true);
+      const second = (await service.searchContractOptions(db, {
+        kind: "agency",
+        q: `Busca_${actorId}`,
+        page: 2,
+      })) as { items: { id: string; label: string }[]; hasMore: boolean };
+      expect(second.items).toHaveLength(3);
+      await db.organization.deleteMany({
+        where: { legalName: { startsWith: `Busca_${actorId}` } },
       });
-      await expect(
-        saveOrganization(
-          db,
-          actorId,
-          {
-            ...org,
-            roles: ["SUPPLIER"],
-            tradeName: "",
-            acronym: "",
-            cnpj: "",
-            uasg: "",
-            email: "",
-            phone: "",
-            notes: "",
-            contacts: [],
-          },
-          agencyId,
-          org.version,
-        ),
-      ).rejects.toThrow();
-      await order(term.id);
-      await expect(
-        saveContractItem(db, actorId, term.id, await v(term.id), {
-          ...item(),
-          number: 2,
-        }),
-      ).rejects.toThrow("aditivo");
-    });
-    it("edita prazo e quantidade do pedido respeitando os saldos consumidos", async () => {
-      const term = await create();
-      const p = await order(term.id, "3");
-      await invoice(term.id, "2", p.id);
-      const payload = {
-        orderDate: "2026-11-02",
-        deadline: "2026-12-01",
-        items: await lines(term.id, "1"),
-      };
-      await expect(
-        updateOrder(db, actorId, term.id, await v(term.id), payload, p.id),
-      ).rejects.toThrow("inferior");
-      await updateOrder(
-        db,
-        actorId,
-        term.id,
-        await v(term.id),
-        { ...payload, items: await lines(term.id, "4") },
-        p.id,
-      );
-      expect(
-        (await current(term.id)).case.orders[0]
-          .deadline!.toISOString()
-          .slice(0, 10),
-      ).toBe("2026-12-01");
-      await expect(
-        updateOrder(
-          db,
-          actorId,
-          term.id,
-          await v(term.id),
-          { ...payload, items: await lines(term.id, "11") },
-          p.id,
-        ),
-      ).rejects.toThrow("saldo");
-    });
-    it("completa os itens de um cadastro legado por cópia explícita da proposta atual", async () => {
       const source = await db.opportunity.create({
         data: {
+          reference: "BUSCA-01",
+          subject: "Software",
           organizationId: agencyId,
-          reference: "LEG-01",
-          subject: "Legado",
-          archived: true,
-          items: {
-            create: {
-              number: 1,
-              description: "Item da proposta",
-              unit: "UN",
-              quantity: "2",
-              winner: true,
-              winningUnitPrice: "10.1250",
-            },
-          },
         },
       });
-      const root = await db.contractCase.create({
-        data: {
-          reference: "GC-LEG-01",
-          organizationId: agencyId,
-          opportunityId: source.id,
-          organizationSnapshot: {},
-        },
-      });
-      const legacy = await db.contract.create({
-        data: {
-          caseId: root.id,
-          organizationId: agencyId,
-          opportunityId: source.id,
-          reference: "CT-LEG-01",
-        },
-      });
-      await copySourceItems(db, actorId, legacy.id, root.version);
-      expect(
-        (await current(legacy.id)).case.items[0].unitPrice.toFixed(4),
-      ).toBe("10.1250");
-      await expect(
-        copySourceItems(db, actorId, legacy.id, await v(legacy.id)),
-      ).rejects.toThrow("cópia inicial");
-    });
-    it("exclui somente item manual sem execução e audita a exclusão", async () => {
-      const term = await create();
-      const itemId = (await current(term.id)).case.items[0].id;
-      await deleteContractItem(db, actorId, term.id, await v(term.id), itemId);
-      expect((await current(term.id)).case.items).toHaveLength(0);
-      expect(
-        await db.auditLog.count({
-          where: { entityId: term.caseId, action: "DELETE_CONTRACT_ITEM" },
-        }),
-      ).toBe(1);
-    });
-    it("não permite converter contratos independentes em grupo", async () => {
-      const ne = await create("COMMITMENT", "600");
-      await expect(
-        createContract(db, actorId, {
-          instrument: instrument("TERM", "CT-POSTERIOR", "1000"),
-          caseId: ne.caseId,
-        }),
-      ).rejects.toThrow("independente");
-      expect(await db.contract.count()).toBe(1);
-    });
-    it("inicia execução automaticamente somente após Pedido válido", async () => {
-      const term = await createContract(db, actorId, {
-        instrument: { ...instrument(), status: "DRAFT" },
-        organizationId: agencyId,
-        items: [item()],
-      });
-      await expect(order(term.id, "11")).rejects.toThrow("saldo");
-      expect((await current(term.id)).status).toBe("DRAFT");
-      await order(term.id, "2");
-      expect((await current(term.id)).status).toBe("ACTIVE");
-      const audit = await db.auditLog.findFirstOrThrow({
-        where: { entityId: term.caseId, action: "CREATE_ORDER" },
-      });
-      expect(audit.changes).toMatchObject({
-        before: { instruments: [{ status: "DRAFT" }] },
-        after: { instruments: [{ status: "ACTIVE" }] },
-      });
-    });
-    it("preenche dados do empenho substitutivo automaticamente no Pedido", async () => {
-      const ne = await create("COMMITMENT");
-      const p = await order(ne.id, "2");
-      expect(p.commitmentNumber).toBe(ne.reference);
-      expect(p.commitmentIssuedAt!.toISOString().slice(0, 10)).toBe(
-        "2026-11-01",
-      );
-      await updateOrder(
-        db,
-        actorId,
-        ne.id,
-        await v(ne.id),
-        {
-          orderDate: "2026-11-02",
-          commitmentNumber: "NE-CORRIGIDO",
-          commitmentIssuedAt: "2026-11-02",
-          items: await lines(ne.id, "2"),
-        },
-        p.id,
-      );
-      expect((await current(ne.id)).case.orders[0].commitmentNumber).toBe(
-        "NE-CORRIGIDO",
-      );
-    });
-    it("concilia valores de ambos os tipos com precisão de centavos e preserva rascunhos", async () => {
-      const term = await createContract(db, actorId, {
-        instrument: {
-          ...instrument(),
-          issuedAt: undefined,
-          publicationUrl: "https://pncp.gov.br/app/contratos/1",
-        },
-        organizationId: agencyId,
-        items: [item()],
-      });
-      expect(term.issuedAt).toBeNull();
-      expect(term.publicationUrl).toContain("pncp.gov.br");
-      expect(
-        contractValueCheck((await current(term.id)).case, term.id).matches,
-      ).toBe(true);
-      const ne = await createContract(db, actorId, {
-        instrument: instrument("COMMITMENT", "NE-TEST", "1"),
-        organizationId: agencyId,
-        items: [item("3", "0.1250")],
-      });
-      expect(
-        contractValueCheck((await current(ne.id)).case, ne.id),
-      ).toMatchObject({ matches: false, total: "0.38", declared: "1.00" });
-      await updateContract(
-        db,
-        actorId,
-        ne.id,
-        await v(ne.id),
-        instrument("COMMITMENT", "NE-TEST", "0.38"),
-      );
-      expect(
-        contractValueCheck((await current(ne.id)).case, ne.id).matches,
-      ).toBe(true);
-    });
-    it("registra chave alfanumérica da NF e recusa caracteres inválidos", async () => {
-      const term = await create();
-      const nf = await createInvoice(db, actorId, term.id, await v(term.id), {
-        reference: "NF-KEY",
-        issueDate: "2026-11-03",
-        accessKey: "ABC123xyz",
-        items: await lines(term.id, "1"),
-      });
-      expect(nf.accessKey).toBe("ABC123xyz");
-      await expect(
-        createInvoice(db, actorId, term.id, await v(term.id), {
-          reference: "NF-BAD",
-          issueDate: "2026-11-03",
-          accessKey: "123/456",
-          items: await lines(term.id, "1"),
-        }),
-      ).rejects.toThrow();
-    });
-    it("lista apenas Termos e empenhos substitutivos e preserva notas contábeis legadas", async () => {
-      const term = await create();
-      const related = await db.contract.create({
-        data: {
-          caseId: term.caseId,
-          organizationId: agencyId,
-          instrumentType: "COMMITMENT",
-          substitutive: false,
-          parentTermId: term.id,
-          reference: "NE-LEGADA",
-          issuedAt: new Date("2026-11-01"),
-          amount: "200",
-          status: "ACTIVE",
-        },
-      });
-      expect((await listContracts(db)).rows.map((i) => i.id)).toEqual([
-        term.id,
-      ]);
-      expect(await getContract(db, related.id)).toBeNull();
-      await expect(
-        createOrder(db, actorId, related.id, await v(term.id), {
-          orderDate: "2026-11-02",
-          items: await lines(term.id, "1"),
-        }),
-      ).rejects.toThrow("Contrato não encontrado");
-      expect(await db.contract.count()).toBe(2);
-    });
-    it("não apaga datas e referências históricas de Termos ao editar outros dados", async () => {
-      const term = await create();
-      await db.contract.update({
-        where: { id: term.id },
-        data: {
-          issuedAt: new Date("2026-10-31"),
-          commitmentReference: "Referência anterior",
-        },
-      });
-      await updateContract(db, actorId, term.id, await v(term.id), {
-        ...instrument(),
-        issuedAt: undefined,
-        notes: "Observação atualizada",
-      });
-      const saved = await current(term.id);
-      expect(saved.issuedAt!.toISOString().slice(0, 10)).toBe("2026-10-31");
-      expect(saved.commitmentReference).toBe("Referência anterior");
-    });
-    it("mantém recebimentos de notas existentes em agrupamentos legados ambíguos", async () => {
-      const ne = await create("COMMITMENT");
-      const nf = await invoice(ne.id, "2");
-      await db.contract.create({
-        data: {
-          caseId: ne.caseId,
-          organizationId: agencyId,
-          instrumentType: "COMMITMENT",
-          substitutive: true,
-          reference: "NE-SEGUNDO",
-          issuedAt: new Date("2026-11-01"),
-          amount: "100",
-          status: "ACTIVE",
-        },
-      });
-      await expect(order(ne.id, "1")).rejects.toThrow("legado");
-      await createReceipt(db, actorId, ne.id, await v(ne.id), {
-        invoiceId: nf.id,
-        date: "2026-11-04",
-        amount: "100",
-      });
-      expect(
-        (await current(ne.id)).case.invoices[0].receipts[0].amount.toFixed(2),
-      ).toBe("100.00");
+      const detail = (await service.searchContractOptions(db, {
+        kind: "source",
+        sourceId: source.id,
+      })) as { organization: { id: string } };
+      expect(detail.organization.id).toBe(agencyId);
     });
   },
 );
