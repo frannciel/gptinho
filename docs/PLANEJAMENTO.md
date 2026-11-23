@@ -16,19 +16,19 @@
 4. Exportação privada de dados de proposta em JSON ou Markdown, sem custos internos.
 5. Instruções para extração e elaboração externa da proposta.
 
-## Entrega atual — simplificação de Contratos, para validação
+## Entrega atual — alterações contratuais e renovação, para validação
 
-1. Listagem de Termos e Empenhos substitutivos independentes; retirada do agrupamento Negócio comercial e do vínculo entre novos instrumentos.
-2. Assinatura no Termo, sem Data do instrumento genérica; emissão no Empenho substitutivo.
-3. Pedidos com número/emissão do empenho opcionais; preenchimento automático no caso substitutivo.
-4. Início automático de execução ao cadastrar Pedido válido, com auditoria e proteção de contratos encerrados/cancelados.
-5. Conferência exata entre valor informado e soma dos itens, com alerta de divergência em ambos os tipos, sem impedir cadastros incompletos.
-6. Link de publicação com ajuda PNCP/Diários Oficiais e padronização de Link do diretório ou documento em todo o módulo.
-7. Chave de Acesso alfanumérica opcional na nota fiscal.
-8. Preservação das funções de fornecimento parcial, faturamento, recebimentos, garantias e aditivos.
-9. Migração segura dos dados anteriores, mantendo vínculos financeiros e sinalizando agrupamentos legados que exigem revisão.
+1. Valor original editável com auditoria e valor atualizado de execução separado e persistido.
+2. Campo Continuado e períodos de execução: renovação repõe o quantitativo atualizado completo sem transportar saldo não pedido.
+3. Pesquisa remota paginada de contratação de origem e órgão, com preenchimento automático do órgão e carregamento dos itens da origem.
+4. Nota fiscal simplificada por Pedido, com valor e dados do documento, sem cadastro operacional de itens.
+5. Tipos estruturados de aditivo e regras para Acréscimo, Supressão, Prorrogação, Renovação e Múltiplas Alterações.
+6. Tipos legais de garantia em lista.
+7. Apostilamento com Reajuste/Repactuação, cálculo bidirecional de preço/percentual e aplicação percentual para todos, persistindo só os novos preços.
+8. Exclusões confirmadas e auditadas de Contrato, Pedido, Nota Fiscal, Aditivo e Apostilamento, com alertas de dependentes e proteção de alterações posteriores.
+9. Migração expansiva com preservação de notas, recebimentos, itens antigos e documentos anteriores.
 
-Detalhes, diagrama e migração: [CONTRATOS.md](CONTRATOS.md).
+Regras, diagrama, limites e implantação: [CONTRATOS.md](CONTRATOS.md).
 
 ## Escopo confirmado do MVP
 
@@ -38,7 +38,7 @@ Esta entrega não inclui emissão fiscal, XML/NF-e, gestão documental, execuç�
 
 ## Ordem dos próximos passos
 
-1. Aplicar a nova migration em homologação e validar Termo, Empenho substitutivo independente, dados do empenho no Pedido, conferência de valores, pedido parcial, nota parcial, recebimento e aditivo com documentos reais.
+1. Aplicar a nova migration em homologação e validar os valores original/atualizado, a renovação continuada, os apostilamentos, as buscas, a nota simples por Pedido e as exclusões com documentos reais em homologação.
 2. Revisar cadastros legados indicados como incompletos; conferir origem e valores antes de iniciar execução.
 3. Concluir a validação dos arquivos de importação e do modelo de proposta com dados reais.
 4. Corrigir os apontamentos dessa validação antes de ampliar o sistema.

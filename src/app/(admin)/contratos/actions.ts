@@ -21,6 +21,53 @@ export async function contractAction(
       if (!id || !version)
         throw new BusinessError("Atualize a página antes de salvar.");
       switch (operation) {
+        case "deleteContract":
+          await contracts.deleteContract(db, actor.id, id, version, input);
+          resultId = undefined;
+          break;
+        case "deleteOrder":
+          await contracts.deleteOrder(
+            db,
+            actor.id,
+            id,
+            version,
+            recordId ?? "",
+            input,
+          );
+          break;
+        case "deleteInvoice":
+          await contracts.deleteInvoice(
+            db,
+            actor.id,
+            id,
+            version,
+            recordId ?? "",
+            input,
+          );
+          break;
+        case "deleteAmendment":
+          await contracts.deleteAmendment(
+            db,
+            actor.id,
+            id,
+            version,
+            recordId ?? "",
+            input,
+          );
+          break;
+        case "deleteEndorsement":
+          await contracts.deleteEndorsement(
+            db,
+            actor.id,
+            id,
+            version,
+            recordId ?? "",
+            input,
+          );
+          break;
+        case "endorsement":
+          await contracts.createEndorsement(db, actor.id, id, version, input);
+          break;
         case "update":
           await contracts.updateContract(db, actor.id, id, version, input);
           break;

@@ -60,6 +60,7 @@ export default async function Page({
                 "Número",
                 "Órgão público",
                 "Valor original",
+                "Valor atualizado",
                 "Situação",
                 "Ações",
               ].map((h) => (
@@ -81,6 +82,11 @@ export default async function Page({
                   {i.amount !== null
                     ? money(i.amount.toFixed(2))
                     : "Não informado"}
+                </td>
+                <td>
+                  {i.currentAmount !== null
+                    ? money(i.currentAmount.toFixed(2))
+                    : "Não informado"}
                   {!contractValueCheck(i.case, i.id).matches && (
                     <p className="text-xs text-amber-800" role="status">
                       Valor divergente dos itens
@@ -97,7 +103,7 @@ export default async function Page({
             ))}
             {!rows.length && (
               <tr>
-                <td colSpan={6} className="py-12 text-center text-slate-500">
+                <td colSpan={7} className="py-12 text-center text-slate-500">
                   Nenhum contrato encontrado.
                 </td>
               </tr>

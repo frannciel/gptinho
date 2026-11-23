@@ -1,106 +1,177 @@
 # Contratos e Fornecimento
 
-## Modelo operacional vigente
+## Fluxo operacional
 
-A tela **Contratos** lista **Termos de Contrato** e **Empenhos substitutivos do Termo de Contrato**. Ambos são acompanhados como contratos independentes, com seus próprios itens, Pedidos, notas fiscais e recebimentos.
-
-O agrupamento “Negócio comercial” foi retirado do cadastro, das consultas e da listagem. Não há seleção de negócio existente nem vínculo de um novo empenho a um Termo. Notas de empenho de acompanhamento contábil são referências dos **Pedidos**, não novos contratos.
-
-### Relações operacionais
+A tela **Contratos** lista **Termos de Contrato** e **Empenhos substitutivos** independentes. Empenhos contábeis são referências opcionais dos **Pedidos**. O agrupamento Negócio comercial não faz parte da operação atual.
 
 ```mermaid
 flowchart TD
-    ORG["Órgão contratante"] --> CT["Contrato: Termo ou Empenho substitutivo"]
-    LIC["Contratação de origem opcional"] -.-> CT
-    CT --> IT["Itens contratados"]
-    CT --> PD["Pedidos: prazo, solicitado e fornecido acumulado"]
-    PD --> NE["Número e data do empenho contábil: opcionais"]
-    CT --> NF["Notas fiscais e itens: faturamento parcial"]
-    PD -. "Pedido opcional" .-> NF
+    ORG["Órgão público pesquisado"] --> CT["Termo ou Empenho substitutivo"]
+    LIC["Contratação de origem opcional<br/>Pesquisada por identificação, objeto ou órgão"] -. "Herda órgão e itens vencedores" .-> CT
+    CT --> IT["Itens: quantidade inicial e atualizada<br/>Preço inicial e atualizado"]
+    CT --> PER["Períodos de execução"]
+    PER --> PED["Pedidos: quantidade solicitada e fornecida<br/>Snapshot do preço e período de origem"]
+    PED --> EMP["Número e emissão do empenho opcionais"]
+    PED --> NF["Nota fiscal: número, data, valor e chave opcional<br/>Sem cadastro de itens"]
     NF --> REC["Recebimentos parciais ou integrais"]
     CT --> GAR["Garantias opcionais"]
-    CT --> AD["Aditivos: somente no Termo no MVP"]
+    CT --> AD["Aditivos: Acréscimo, Supressão, Prorrogação,<br/>Renovação ou Múltiplas Alterações"]
+    CT --> AP["Apostilamento: Reajuste ou Repactuação"]
+    AD -. "Renovação de contrato continuado" .-> PER
+    AD -. "Quantidades e/ou preços" .-> IT
+    AP -. "Novo preço unitário" .-> IT
 ```
 
-O diagrama representa a operação apresentada ao usuário. Não existe entidade Entrega: o fornecimento é registrado diretamente no Pedido.
+O diagrama é operacional. O armazenamento interno `ContractCase` permanece por compatibilidade; cada contrato novo tem sua própria base. Não existe entidade Entrega: o fornecimento é acompanhado diretamente no Pedido.
 
-## Cadastro do contrato
+## Cadastro e pesquisa
 
-1. Escolha **Termo de Contrato** ou **Empenho substitutivo**.
-2. Se houver contratação de origem, selecione-a para herdar o órgão e copiar os itens vencedores com preço informado, respeitando as quantidades disponíveis. Sem origem, selecione o órgão e cadastre os itens manualmente após salvar.
-3. No Termo, informe a data de assinatura e a vigência. O campo genérico **Data do instrumento** foi removido. No Empenho substitutivo, a data de emissão identifica o próprio empenho e é usada para preencher os Pedidos.
-4. **Link da publicação** é opcional, com ajuda para publicação no PNCP ou Diário Oficial da União, do Estado ou do Município.
-5. **Link do diretório ou documento** é opcional e tem o mesmo nome em contratos, notas fiscais, garantias e aditivos. São links HTTP/HTTPS; não há upload nem armazenamento local.
+- Escolha **Termo de Contrato** ou **Empenho substitutivo**.
+- **Contratação de origem** e **Órgão público** são campos de pesquisa remota, com consultas paginadas de até 20 resultados e opção de carregar mais. A página não carrega as listas completas.
+- A pesquisa de contratação aceita identificação, objeto ou órgão. A pesquisa de órgão aceita nome, sigla ou CNPJ.
+- Selecionar a origem preenche o órgão automaticamente e carrega os itens vencedores com preço e quantidade disponível. Sem origem, selecione o órgão e cadastre os itens manualmente depois de salvar.
+- O Termo usa data de assinatura e vigência; não há campo genérico Data do instrumento. O Empenho substitutivo usa sua data de emissão.
+- **Continuado** identifica contratos cuja quantidade pode ser renovada para novos períodos. A renovação por aditivo continua disponível nos Termos, conforme o escopo anterior de aditivos do MVP.
+- **Link da publicação** é opcional e tem ajuda para PNCP ou Diário Oficial da União, do Estado ou do Município.
+- **Link do diretório ou documento** tem o mesmo nome nos formulários. São links HTTP/HTTPS; não há upload nem armazenamento local persistente.
 
-### Conferência do valor
+As buscas e alterações exigem autenticação de administrador. Consultas não ficam em cache público; respostas antigas de pesquisa são canceladas quando a seleção muda.
 
-O **Valor do instrumento (R$)** continua informado conforme o documento e é confrontado com o total dos itens, tanto no Termo quanto no Empenho substitutivo.
+## Valor original e valor atualizado
+
+| Campo            | Significado                                                                                   | Como alterar                                                                                   |
+| ---------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Valor original   | Valor cadastrado como referência original do instrumento.                                     | Pela edição do contrato, inclusive após pedidos ou alterações contratuais, mantendo auditoria. |
+| Valor atualizado | Valor vigente do período atual, resultante da base de execução e dos aditivos/apostilamentos. | Pelas alterações contratuais; não é um campo livre da edição.                                  |
+
+No cadastro inicial, os dois valores começam iguais. A base inicial de execução é preservada separadamente para que uma correção posterior do valor original não recalcule valores já atualizados ou lançamentos financeiros.
+
+`amount` armazena o valor original; `initialCurrentAmount` mantém a base de execução; `currentAmount` persiste o valor atualizado. A atualização deste último é calculada no backend e auditada, junto com os registros que a produziram.
+
+O valor atualizado é comparado com a soma dos itens atualizados do período. Divergências em centavos geram alerta, sem impedir salvar um cadastro cujo preenchimento de itens ainda está em andamento. O formulário de edição também confere o valor original informado com seus itens de referência, sem transformar essa correção em alteração do valor atualizado.
+
+### Precisão
+
+- Quantidade: `Decimal(18,3)`.
+- Preço unitário inicial, atualizado e novo preço de apostilamento: `Decimal(18,4)`.
+- Valores de contrato, período, nota, garantia e recebimento: `Decimal(18,2)`.
+- Cálculos exatos com inteiros de escala fixa. Total por linha = quantidade × preço, arredondado HALF_UP para centavos. Totais são somas das linhas arredondadas.
+- Percentuais da interface usam até quatro casas. Eles são calculados por divisão exata com arredondamento HALF_UP, sem ponto flutuante financeiro.
+
+## Períodos e contratos continuados
+
+Cada contrato tem um período inicial. Pedidos e notas fiscais guardam o período a que pertencem; cada Pedido novo também guarda seu preço unitário no momento do cadastro.
+
+**Quantidade atualizada** é a quantidade inicial acrescida ou reduzida pelos aditivos. **Quantidade disponível** é a atualizada menos a quantidade comprometida nos Pedidos daquele período.
+
+### Prorrogação
+
+Altera a data final da vigência e conserva o período, os preços e o saldo remanescente. Não renova quantitativos.
+
+### Renovação
+
+Exige contrato marcado como **Continuado** e nova data final posterior à vigente. Abre um novo período, iniciado no dia seguinte ao término anterior, usando a quantidade atualizada completa de cada item e mantendo seu preço atualizado.
 
 ```text
-Total de cada item = quantidade × preço unitário, arredondado para centavos
-Total dos itens = soma dos totais de cada item
-Valor conferido = valor do instrumento igual ao total dos itens em centavos
+Quantidade inicial:                          100
+Acréscimo por aditivo:                        10
+Quantidade atualizada para cada período:    110
+Pedidos do período anterior:                 90
+Saldo não pedido ao encerrar:                20
+
+Disponível ao abrir o novo período:         110
+Não se transfere a sobra de 20.
 ```
 
-Quantidades têm até três casas decimais; preços unitários, quatro; totais, duas. Usa-se aritmética decimal exata e arredondamento HALF_UP por linha, sem ponto flutuante nos cálculos financeiros.
+O registro da Renovação efetiva a transição operacional para o novo período; não há agendamento automático de uma transição futura. O valor atualizado do novo período é a soma desse quantitativo completo pelos preços atualizados. Os valores e saldos dos períodos anteriores continuam no histórico. Por isso, a consulta separa **valor e saldo do período atual** de **faturamento, recebimentos e saldo a receber acumulados**.
 
-Uma diferença de um centavo já gera alerta. O formulário mostra a conferência durante a edição; o backend recalcula a comparação nas consultas e na listagem. O alerta permanece em todas as abas enquanto existir divergência e é atualizado após alterações de itens ou aditivos.
+Notas emitidas depois da renovação para um Pedido antigo permanecem no período do Pedido e não consomem o orçamento novo. Não é permitido criar Pedidos retroativos no período expirado nem aumentar quantidades de Pedidos daquele período. Correções de registros anteriores continuam sujeitas aos saldos já fornecidos e faturados.
 
-A divergência **não bloqueia salvar um cadastro ainda incompleto**: itens manuais são incluídos após criar o contrato. Esse cadastro continua sinalizado como divergente até os valores coincidirem. Os limites financeiros de faturamento continuam sendo aplicados independentemente do alerta.
+Não é possível retirar a marca Continuado enquanto houver renovação ativa. A renovação mantém a quantidade atualizada e o preço; modificações adicionais devem ser registradas nos atos próprios.
 
-Com aditivos, a consulta compara os valores vigentes: valor original acrescido das variações do aditivo e itens acrescidos de suas variações de quantidade/preço. Os dados originais são preservados.
+## Aditivos
 
-## Pedidos e início da execução
+A guia Aditivos permanece exclusiva do Termo no MVP. Os novos registros utilizam as opções:
 
-O Pedido registra referência opcional, data, prazo de fornecimento e observações. Os campos **Número do empenho** e **Data de emissão do empenho** são opcionais.
+| Tipo                 | Regra                                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| Acréscimo            | Aumenta quantidade e/ou preço de item; não aceita reduções.                                     |
+| Supressão            | Reduz quantidade e/ou preço de item; não aceita aumentos.                                       |
+| Prorrogação          | Altera a vigência para uma data final posterior, sem alterar itens ou valor.                    |
+| Renovação            | Abre novo período com quantitativo atualizado completo e preço mantido, em contrato continuado. |
+| Múltiplas Alterações | Permite combinar as alterações pertinentes, respeitando os saldos e os limites de dados.        |
 
-- Em Termos, esses campos podem registrar o empenho contábil correspondente ao Pedido.
-- Em Empenhos substitutivos, o formulário já apresenta o número e a emissão do próprio empenho. O backend também preenche esses dados quando os campos chegam vazios. Os dados gravados no Pedido são independentes de alterações posteriores no contrato.
-- Os dados do empenho também podem ser consultados e corrigidos no próprio Pedido.
+Para alterações de itens, se a variação monetária do cabeçalho ficar zero, o backend calcula a diferença do valor do período a partir dos itens. Uma variação monetária informada explicitamente é respeitada e continua sujeita à conferência com os itens e aos saldos financeiros.
 
-Cadastrar um Pedido válido muda automaticamente um contrato **Em preparação** para **Em execução**, na mesma transação. Não é necessário mudar a situação manualmente antes de criar o Pedido. Se a gravação falhar, a situação não é alterada. Contratos encerrados ou cancelados não aceitam novos Pedidos.
+Documentos novos não podem anteceder a última alteração ativa registrada. Datas e valores originais, Pedidos e notas anteriores não são reescritos. Registros antigos com tipo textual são preservados como legados; a migração não presume que um texto antigo representava uma renovação real.
 
-A quantidade fornecida é acumulada. Pendente = solicitado − fornecido. Situações calculadas: Pendente, Parcialmente fornecido, Fornecido e Cancelado. Pedidos não podem consumir mais que o saldo contratual; correções não podem reduzir a quantidade abaixo do já fornecido ou faturado.
+## Apostilamento
 
-## Notas fiscais e recebimentos
+A guia Apostilamento registra:
 
-A nota fiscal registra número, emissão, itens, valor calculado e pedido opcional. Não exige uma Entrega nem um Pedido artificial. O campo **Chave de Acesso** é opcional, aceita letras e números e permite guardar a referência para consulta externa no portal da fazenda competente. Não existe consulta automática nem validação fiscal da chave. O limite de armazenamento é de 100 caracteres; não se impõe uma chave exclusivamente numérica de 44 dígitos.
+- Número, Data de Assinatura e Tipo (**Reajuste** ou **Repactuação**).
+- Link do diretório ou documento e Observações opcionais.
+- Novos preços unitários dos itens afetados.
 
-As notas permitem faturamento parcial. Quantidades não podem ultrapassar os saldos do contrato ou do Pedido vinculado. Cada nota preserva descrição, unidade, preço e total de suas linhas, mesmo após aditivos futuros.
+O operador pode digitar o **novo valor** para calcular a variação percentual ou informar a **variação percentual** para calcular o novo valor. **Variação para todos (%)** e o botão Aplicar a todos preenchem os percentuais das linhas, que ainda podem ser ajustadas individualmente.
 
-Recebimentos são registrados na própria nota, com data e valor positivos. Não podem exceder seu saldo nem anteceder a emissão. Uma nota com recebimentos não pode ser cancelada. Encerrar o contrato não apaga obrigações nem impede registrar recebimentos válidos.
+Somente o novo valor unitário de cada item alterado é persistido. Percentuais individuais e a variação para todos não são gravados. O backend valida os novos valores e recalcula o valor atualizado; não confia em um total simulado pelo navegador.
 
-## Garantias, aditivos e histórico
+Se o preço anterior for zero e o novo for positivo, não existe percentual finito de variação: a interface orienta informar diretamente o novo preço. Variações que produzam preço negativo são recusadas, mesmo que o arredondamento pudesse ocultar um negativo muito pequeno.
 
-Garantias são opcionais. Aditivos continuam disponíveis apenas no Termo, preservando valores originais, pedidos, notas e recebimentos anteriores. Reduções não podem invalidar saldos já utilizados. Itens manuais podem ser corrigidos antes da execução; após lançamentos, ajustes seguem as regras de aditivos já existentes.
+Preços de Pedidos anteriores são preservados. Um Pedido posterior usa o preço atualizado resultante do apostilamento.
 
-Alterações relevantes mantêm auditoria antes/depois. Gravações contextuais verificam a versão e bloqueiam a base de execução no PostgreSQL para evitar conflitos e consumo concorrente do mesmo saldo. Mudanças posteriores na origem, no catálogo ou no fornecedor não atualizam automaticamente os snapshots dos itens contratados.
+## Pedidos e notas fiscais
 
-## Migração e compatibilidade
+O Pedido mantém referência opcional, data, prazo, observações, número e emissão do empenho opcionais e suas quantidades solicitadas/fornecidas. No Empenho substitutivo, número e emissão são preenchidos automaticamente a partir do próprio instrumento, inclusive pelo backend quando chegam vazios.
 
-Nova migração: `20261122000100_simplify_contracts`, aplicada depois de `20261122000000_contracts_supply`.
+Um Pedido válido muda automaticamente a situação **Em preparação → Em execução**, na mesma transação. Pedidos inválidos não alteram a situação. Contratos encerrados ou cancelados não recebem novos Pedidos.
 
-A migração adiciona:
+A Nota Fiscal agora é um registro simples de um **Pedido obrigatório**, com número, data de emissão, valor, Chave de Acesso alfanumérica opcional, link e observações. Não há formulário nem tabela operacional de itens da nota. Várias notas parciais podem ser registradas para o mesmo Pedido, respeitando seus saldos financeiros e os do período.
 
-| Entidade       | Campos                                   |
-| -------------- | ---------------------------------------- |
-| `Contract`     | `substitutive`, `publicationUrl`         |
-| `SupplyOrder`  | `commitmentNumber`, `commitmentIssuedAt` |
-| `SalesInvoice` | `accessKey`                              |
+A Chave de Acesso aceita até 100 caracteres alfanuméricos, sem exigir exclusivamente 44 dígitos. Não há emissão de NF-e, validação fiscal da chave ou consulta automática à fazenda pública.
 
-Ela preserva documentos, IDs, itens, quantidades, notas, recebimentos e auditoria existentes. Não apaga colunas históricas de datas ou vínculos. O campo antigo de emissão deixa de ser exigido para o Termo; a assinatura continua obrigatória.
+Recebimentos continuam na própria nota, parciais ou integrais, sem ultrapassar o saldo e sem data anterior à emissão. Encerrar o contrato não apaga obrigações nem impede recebimentos válidos. Cancelar uma nota com recebimentos continua bloqueado; a exclusão definitiva é uma operação distinta e exige confirmação da perda também desses recebimentos.
 
-Empenhos anteriores vinculados a um Termo, explicitamente ou na mesma base de execução, são marcados como referências contábeis e deixam de aparecer como contratos. Seus números e datas são copiados para os Pedidos correspondentes, preservando os vínculos históricos das notas fiscais e recebimentos.
+## Garantias
 
-O armazenamento interno `ContractCase` permanece para compatibilidade e integridade, sem ser apresentado ao operador. Cada contrato novo cria sua própria base de execução; não é possível criar novos agrupamentos pela interface ou pelo backend.
+São opcionais e usam as opções:
 
-**Exceção legada:** bases anteriores com vários instrumentos ainda independentes compartilhando os mesmos itens exigem revisão dos documentos para separar quantidades e obrigações. O sistema preserva e sinaliza esses registros e impede novos lançamentos ambíguos; recebimentos de notas já emitidas continuam disponíveis. Não divide quantidades, transfere recebimentos nem deduz vínculos jurídicos por suposição. Cadastros anteriores sem tipo definido são acessíveis por **Revisar cadastros legados** na listagem.
+- Caução em dinheiro.
+- Caução títulos da dívida pública.
+- Seguro-garantia.
+- Fiança bancária.
+- Título de capitalização.
 
-O documento [Negócio comercial](NEGOCIO_COMERCIAL.md) registra a concepção anterior e fica mantido como histórico, não como instrução operacional vigente.
+Textos antigos são mantidos no histórico. Ao editar um registro legado com tipo fora dessas opções, o operador precisa escolher uma opção da lista para salvar.
 
-## Implantação e verificação
+## Exclusões definitivas
 
-Não há novas variáveis de ambiente. Em homologação, com as variáveis já documentadas configuradas:
+Todas as exclusões exigem administrador, confirmação explícita de irreversibilidade e versão atual dos dados. A trilha de auditoria registra o antes/depois e permanece após a exclusão; não existe função de desfazer na interface.
+
+| Registro excluído | Efeito confirmado no alerta                                                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contrato          | Apaga seus itens, períodos, Pedidos, notas, recebimentos, garantias, aditivos e apostilamentos. Não apaga órgão, catálogo ou contratação de origem.     |
+| Pedido            | Apaga seus itens, notas vinculadas e respectivos recebimentos, liberando seu comprometimento de quantidade.                                             |
+| Nota Fiscal       | Apaga a nota, seus recebimentos e eventuais linhas históricas legadas. Não apaga o Pedido.                                                              |
+| Aditivo           | Remove o registro e recalcula seus efeitos. Deve respeitar alterações posteriores e quantidades/valores já utilizados.                                  |
+| Apostilamento     | Remove o registro e recalcula os preços/valores vigentes, sem reescrever Pedidos anteriores. Deve respeitar alterações posteriores e saldos utilizados. |
+
+Os alertas de Contrato, Pedido e Nota exibem as quantidades de dependentes que serão apagados. Aditivos/apostilamentos ativos com atos posteriores não podem ser excluídos antes desses atos: remova ou cancele a alteração mais recente primeiro. Renovação com Pedidos ou notas no novo período não pode ser excluída antes desses registros. Uma redução de saldo abaixo do já utilizado faz a transação inteira ser revertida.
+
+Grupos legados com mais de um contrato independente ainda compartilhando itens exigem separação antes de exclusão do contrato; não se apagam outros contratos por suposição. Recebimentos de notas existentes permanecem disponíveis nesses legados.
+
+## Migração, compatibilidade e implantação
+
+Migração nova: `20261123000000_contract_periods_endorsements`.
+
+Ela adiciona o campo Continuado, os valores de execução separados, os períodos de execução, o tipo estruturado dos aditivos, os preços históricos dos novos Pedidos e as entidades de Apostilamento e seus itens. Não remove registros ou colunas financeiras existentes.
+
+Os contratos anteriores ganham o período inicial com seus valores e alterações existentes. Pedidos e notas são vinculados ao período 1, mantendo quantidades, valores, recebimentos, IDs e auditoria. Itens antigos de notas fiscais ficam armazenados somente como histórico de compatibilidade: novas notas não criam essas linhas e a operação não depende delas.
+
+Pedidos anteriores que não tinham preço gravado continuam com snapshot desconhecido. Não se inventa um preço histórico: o limite de valor por Pedido é aplicado quando todos os preços estão disponíveis; o limite financeiro do período e os saldos de recebimento continuam obrigatórios. Cadastros legados sem valor ou tipo devem ser completados antes da execução.
+
+Em homologação, com as variáveis já documentadas:
 
 ```bash
 npm ci
@@ -109,15 +180,13 @@ npm run db:migrate
 npm run build
 ```
 
-`db:migrate` executa `prisma migrate deploy`. Não usar `reset`, `db push` ou migrations de desenvolvimento em produção. Primeiro validar com documentos reais em homologação. A migração desta entrega é testada somente em PostgreSQL descartável, inclusive com registros anteriores e reaplicação sem pendências; não executa alterações no Neon por conta própria.
+Não há novas variáveis. `db:migrate` executa `prisma migrate deploy`. Não executar `reset`, `db push` ou migrations de desenvolvimento em produção. Aplicar primeiro em homologação com backup e documentos reais. Não remover a expansão de banco ao reverter um deploy, especialmente depois de haver períodos, apostilamentos ou lançamentos financeiros novos.
 
-Rollback de aplicação preserva a expansão do banco. Não apagar novas tabelas/colunas ou desfazer dados com lançamentos; qualquer reversão de dados exige um plano específico com backup.
+A migração e os fluxos são testados somente em PostgreSQL descartável neste ambiente. Não há migration automática no Neon nem publicação de produção nesta implementação.
 
-A entrega inclui testes de conciliação exata, campos opcionais, início automático de execução, contratos independentes, rejeição de agrupamentos, preenchimento do empenho, chave da NF, autorização e preservação dos dados legados, além dos testes de regressão existentes.
-
-### Resultado das verificações desta entrega
+### Verificações desta entrega
 
 - TypeScript, ESLint, Prettier e build Next.js aprovados.
-- 154 testes unitários, 99 de integração com PostgreSQL e 15 de navegador: **268 aprovados**.
-- Nova migração aplicada somente ao PostgreSQL descartável de testes; segunda execução sem pendências. A execução local utilizou o engine oficial WASM do Prisma com o adaptador PostgreSQL.
-- Nenhuma migration no Neon e nenhum deploy de produção foram executados nesta entrega.
+- **280 testes aprovados:** 161 unitários, 102 de integração com PostgreSQL e 17 de navegador.
+- A migração foi aplicada somente ao PostgreSQL descartável local e a segunda execução não encontrou pendências. Foi usado o engine oficial WASM do Prisma com o adaptador PostgreSQL neste ambiente.
+- Os testes verificam o exemplo de renovação 100 + 10 com sobra de 20, separação de períodos, preços históricos, exclusões e dependências, pesquisa privada/paginada, apostilamento bidirecional e preservação dos campos após erros de validação.

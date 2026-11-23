@@ -9,6 +9,8 @@ import {
   lineValue,
   reconcileContractValue,
   invoiceSchema,
+  priceFromPercent,
+  percentFromPrice,
 } from "@/lib/contracts";
 describe("Contratos: precisão, datas e modalidades", () => {
   it("aceita valores brasileiros e quatro casas sem arredondar o cadastro", () => {
@@ -88,7 +90,8 @@ describe("Contratos: precisão, datas e modalidades", () => {
     const base = {
       reference: "NF",
       issueDate: "2026-11-01",
-      items: [{ contractItemId: "ck123456789012345678901234", quantity: "1" }],
+      orderId: "ck123456789012345678901234",
+      amount: "100",
     };
     expect(
       invoiceSchema.safeParse({ ...base, accessKey: "AbC123" }).success,
@@ -97,5 +100,13 @@ describe("Contratos: precisão, datas e modalidades", () => {
     expect(
       invoiceSchema.safeParse({ ...base, accessKey: "123-456" }).success,
     ).toBe(false);
+  });
+  it("apostilamento calcula valor e percentual com quatro casas exatas", () => {
+    expect(priceFromPercent("10.0000", "12.5")).toBe("11.2500");
+    expect(percentFromPrice("10.0000", "11.2500")).toBe("12.5000");
+    expect(priceFromPercent("10.0000", "-10")).toBe("9.0000");
+    expect(percentFromPrice("0.0000", "1.0000")).toBeNull();
+    expect(() => priceFromPercent("10.0000", "-100.0001")).toThrow();
+    expect(priceFromPercent("0.0001", "50")).toBe("0.0002");
   });
 });

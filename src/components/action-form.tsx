@@ -41,8 +41,17 @@ export function ActionForm({
           element instanceof HTMLTextAreaElement ||
           element instanceof HTMLSelectElement
         ) {
-          const value = submitted.current.get(element.name);
-          if (typeof value === "string") element.value = value;
+          if (
+            element instanceof HTMLInputElement &&
+            (element.type === "checkbox" || element.type === "radio")
+          ) {
+            element.checked = submitted.current
+              .getAll(element.name)
+              .includes(element.value);
+          } else {
+            const value = submitted.current.get(element.name);
+            if (typeof value === "string") element.value = value;
+          }
         }
       }
     }

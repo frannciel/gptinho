@@ -250,11 +250,16 @@ export default async function Dashboard() {
           <p className="mt-2 text-xs leading-5 text-slate-500">
             Valores apurados a partir dos contratos, notas fiscais e
             recebimentos registrados. Termos e Empenhos substitutivos são
-            acompanhados como contratos independentes.
+            acompanhados como contratos independentes. O valor atualizado
+            corresponde ao período atual; faturamento e recebimentos são
+            acumulados.
           </p>
           <dl className="mt-5 divide-y divide-slate-100">
             {[
-              ["Valor contratado", contractStats.contracted],
+              [
+                "Valor atualizado dos períodos atuais",
+                contractStats.contracted,
+              ],
               ["Valor faturado", contractStats.invoiced],
               ["Valor recebido", contractStats.received],
               ["Saldo a receber", contractStats.receivable],

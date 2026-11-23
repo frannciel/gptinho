@@ -14,11 +14,21 @@ import {
   units,
   fixed,
   bounded,
-  lineValue,
   decimal,
   reconcileContractValue,
+  endorsementSchema,
 } from "@/lib/contracts";
+import {
+  executionState,
+  validateExecution,
+  changeEvents,
+} from "./contract-state";
 const caseInclude = {
+  periods: { orderBy: { number: "asc" as const } },
+  endorsements: {
+    include: { items: true },
+    orderBy: { createdAt: "asc" as const },
+  },
   organization: true,
   opportunity: { select: { id: true, reference: true, subject: true } },
   instruments: { orderBy: { createdAt: "asc" as const } },
@@ -57,104 +67,46 @@ function assertActive(c: ContractAggregate, id: string) {
     );
   return i;
 }
-export function contractBalances(c: ContractAggregate) {
-  const amendments = c.amendments.filter((a) => !a.cancelled);
-  const items = c.items.map((item) => {
-    const changes = amendments
-      .flatMap((a) => a.items)
-      .filter((a) => a.contractItemId === item.id);
-    const quantity =
-      units(item.quantity, 3) +
-      changes.reduce((s, a) => s + units(a.quantityDelta, 3), 0n);
-    const price =
-      units(item.unitPrice, 4) +
-      changes.reduce((s, a) => s + units(a.unitPriceDelta, 4), 0n);
-    const invoiced = c.invoices
-      .filter((n) => !n.cancelled)
-      .flatMap((n) => n.items)
-      .filter((i) => i.contractItemId === item.id)
-      .reduce((s, i) => s + units(i.quantity, 3), 0n);
-    let reserved = 0n,
-      supplied = 0n;
-    for (const order of c.orders)
-      for (const row of order.items.filter(
-        (i) => i.contractItemId === item.id,
-      )) {
-        const delivered = units(row.suppliedQuantity, 3);
-        supplied += delivered;
-        const billed = c.invoices
-          .filter((n) => !n.cancelled)
-          .flatMap((n) => n.items)
-          .filter((i) => i.orderItemId === row.id)
-          .reduce((s, i) => s + units(i.quantity, 3), 0n);
-        reserved += order.cancelled
-          ? delivered > billed
-            ? delivered
-            : billed
-          : units(row.requestedQuantity, 3);
-      }
-    return {
-      ...item,
-      effectiveQuantity: fixed(quantity, 3),
-      effectivePrice: fixed(price, 4),
-      quantityUnits: quantity,
-      priceUnits: price,
-      reserved,
-      supplied,
-      invoiced,
-      available: quantity - reserved,
+export const contractBalances = executionState;
+const assertBalances = validateExecution;
+async function syncExecution(
+  tx: Prisma.TransactionClient,
+  c: ContractAggregate,
+) {
+  const b = executionState(c);
+  for (const p of b.periods) {
+    if (!b.owner) continue;
+    bounded(p.value, 2);
+    const data = {
+      startsAt: p.startsAt,
+      endsAt: p.endsAt,
+      amount: fixed(p.value, 2),
+      itemsSnapshot: p.items.map((i) => ({
+        id: i.id,
+        quantity: fixed(i.quantity, 3),
+        unitPrice: fixed(i.price, 4),
+      })),
+      renewalId: p.renewalId,
     };
-  });
-  const term = c.instruments.find((i) => i.instrumentType === "TERM");
-  // A Term is the ceiling. Its NEs authorize execution without adding revenue a second time.
-  const original = term
-    ? units(term.amount ?? "0", 2)
-    : c.instruments
-        .filter((i) => i.instrumentType === "COMMITMENT")
-        .reduce((s, i) => s + units(i.amount ?? "0", 2), 0n);
-  const value =
-    original + amendments.reduce((s, a) => s + units(a.valueDelta, 2), 0n);
-  const invoiced = c.invoices
-    .filter((i) => !i.cancelled)
-    .reduce((s, i) => s + units(i.amount, 2), 0n);
-  const received = c.invoices
-    .flatMap((i) => i.receipts)
-    .reduce((s, i) => s + units(i.amount, 2), 0n);
-  return {
-    items,
-    original,
-    value,
-    invoiced,
-    received,
-    remaining: value - invoiced,
-    receivable: invoiced - received,
-  };
-}
-function assertBalances(c: ContractAggregate) {
-  const b = contractBalances(c);
-  bounded(b.value, 2);
-  for (const instrument of c.instruments.filter(
-    (i) => i.instrumentType === "COMMITMENT",
-  )) {
-    const billed = c.invoices
-      .filter((n) => !n.cancelled && n.instrumentId === instrument.id)
-      .reduce((s, n) => s + units(n.amount, 2), 0n);
-    if (billed > units(instrument.amount ?? "0", 2))
-      throw new BusinessError("Faturamento excede o valor da Nota de Empenho.");
+    await tx.contractPeriod.upsert({
+      where: { caseId_number: { caseId: c.id, number: p.number } },
+      create: {
+        ...data,
+        caseId: c.id,
+        instrumentId: b.owner.id,
+        number: p.number,
+      },
+      update: data,
+    });
   }
-  if (b.invoiced > b.value)
-    throw new BusinessError(
-      "O valor vigente não pode ser menor que o valor já faturado.",
-    );
-  for (const i of b.items) {
-    bounded(i.quantityUnits, 3);
-    bounded(i.priceUnits, 4);
-    if (i.reserved > i.quantityUnits || i.invoiced > i.quantityUnits)
-      throw new BusinessError(
-        `O item ${i.number} ficaria com quantidade inferior ao saldo já pedido ou faturado.`,
-      );
-    lineValue(i.effectiveQuantity, i.effectivePrice);
-  }
+  const owners = c.instruments.filter(
+    (i) => i.instrumentType !== "COMMITMENT" || i.substitutive,
+  );
+  if (b.owner && owners.length === 1)
+    await tx.contract.update({
+      where: { id: b.owner.id },
+      data: { currentAmount: fixed(b.value, 2) },
+    });
 }
 async function audit(
   tx: Prisma.TransactionClient,
@@ -214,7 +166,12 @@ async function mutate<T>(
           "Este cadastro legado compartilha itens entre contratos. Revise a separação dos registros antes de novos lançamentos; o histórico foi preservado.",
         );
       const result = await run(tx, c);
-      const after = await tx.contractCase.findUniqueOrThrow({
+      let after = await tx.contractCase.findUniqueOrThrow({
+        where: { id: c.id },
+        include: caseInclude,
+      });
+      await syncExecution(tx, after);
+      after = await tx.contractCase.findUniqueOrThrow({
         where: { id: c.id },
         include: caseInclude,
       });
@@ -351,12 +308,19 @@ export async function createContract(
       const result = await tx.contract.create({
         data: {
           ...payload,
+          initialCurrentAmount: payload.amount,
+          currentAmount: payload.amount,
           caseId: c.id,
           organizationId: c.organizationId,
           opportunityId: c.opportunityId,
         },
       });
-      const after = await tx.contractCase.findUniqueOrThrow({
+      let after = await tx.contractCase.findUniqueOrThrow({
+        where: { id: c.id },
+        include: caseInclude,
+      });
+      await syncExecution(tx, after);
+      after = await tx.contractCase.findUniqueOrThrow({
         where: { id: c.id },
         include: caseInclude,
       });
@@ -392,12 +356,11 @@ export async function updateContract(
           "O tipo do instrumento não pode ser alterado após o cadastro.",
         );
       if (
-        old.amount !== null &&
-        units(old.amount, 2) !== units(value.amount, 2) &&
-        (c.orders.length || c.invoices.length || c.amendments.length)
+        !value.continuous &&
+        c.amendments.some((a) => a.kind === "RENEWAL" && !a.cancelled)
       )
         throw new BusinessError(
-          "Com execução registrada, altere o valor por aditivo no Termo.",
+          "Há renovação registrada; preserve a natureza continuada do contrato.",
         );
       if (
         c.amendments.length &&
@@ -413,12 +376,18 @@ export async function updateContract(
           value.instrumentType === "TERM"
             ? {
                 ...value,
+                ...(old.initialCurrentAmount === null
+                  ? { initialCurrentAmount: value.amount }
+                  : {}),
                 issuedAt: old.issuedAt,
                 commitmentReference: old.commitmentReference,
                 supplyDeadline: null,
               }
             : {
                 ...value,
+                ...(old.initialCurrentAmount === null
+                  ? { initialCurrentAmount: value.amount }
+                  : {}),
                 signatureDate: null,
                 validFrom: null,
                 validUntil: null,
@@ -449,7 +418,12 @@ export async function saveContractItem(
         throw new BusinessError(
           "Itens de origem são copiados na criação do contrato. Não altere o retrato da proposta vencedora.",
         );
-      if (c.orders.length || c.invoices.length || c.amendments.length)
+      if (
+        c.orders.length ||
+        c.invoices.length ||
+        c.amendments.length ||
+        c.endorsements.length
+      )
         throw new BusinessError(
           "Com execução registrada, ajuste os itens por aditivo.",
         );
@@ -483,6 +457,14 @@ export async function createOrder(
         "Contrato encerrado ou cancelado não permite novos Pedidos.",
       );
     const b = contractBalances(c);
+    if (b.currentPeriod.startsAt && value.orderDate < b.currentPeriod.startsAt)
+      throw new BusinessError(
+        "A data do Pedido deve pertencer ao período atual.",
+      );
+    if (b.currentPeriod.endsAt && value.orderDate > b.currentPeriod.endsAt)
+      throw new BusinessError(
+        "A data do Pedido ultrapassa a vigência do período atual.",
+      );
     for (const row of value.items) {
       const item = b.items.find((i) => i.id === row.contractItemId);
       if (!item || units(row.quantity, 3) > item.available)
@@ -496,6 +478,7 @@ export async function createOrder(
     return tx.supplyOrder.create({
       data: {
         ...header,
+        periodId: b.currentPeriod.id,
         commitmentNumber:
           instrument.instrumentType === "COMMITMENT"
             ? (header.commitmentNumber ?? instrument.reference)
@@ -510,6 +493,8 @@ export async function createOrder(
           create: items.map((i) => ({
             contractItemId: i.contractItemId,
             requestedQuantity: i.quantity,
+            unitPrice: b.items.find((row) => row.id === i.contractItemId)!
+              .effectivePrice,
           })),
         },
       },
@@ -585,60 +570,17 @@ export async function createInvoice(
   input: unknown,
 ) {
   const value = invoiceSchema.parse(input);
-  unique(value.items.map((i) => i.contractItemId));
   return mutate(db, actorId, id, version, "CREATE_INVOICE", async (tx, c) => {
     assertActive(c, id);
-    const b = contractBalances(c);
-    const order = value.orderId
-      ? c.orders.find((o) => o.id === value.orderId)
-      : null;
-    if (value.orderId && (!order || order.cancelled))
-      throw new BusinessError("Selecione um pedido válido do mesmo negócio.");
-    const lines = value.items.map((row) => {
-      const item = b.items.find((i) => i.id === row.contractItemId);
-      if (!item || units(row.quantity, 3) + item.invoiced > item.quantityUnits)
-        throw new BusinessError(
-          "Quantidade faturada excede o saldo contratual.",
-        );
-      const orderItem = order?.items.find((i) => i.contractItemId === item.id);
-      if (order) {
-        const billed = c.invoices
-          .filter((n) => !n.cancelled)
-          .flatMap((n) => n.items)
-          .filter((i) => i.orderItemId === orderItem?.id)
-          .reduce((s, i) => s + units(i.quantity, 3), 0n);
-        if (
-          !orderItem ||
-          billed + units(row.quantity, 3) >
-            units(orderItem.requestedQuantity, 3)
-        )
-          throw new BusinessError(
-            "Quantidade faturada excede o saldo do pedido.",
-          );
-      }
-      return {
-        contractItemId: item.id,
-        orderItemId: orderItem?.id,
-        description: item.description,
-        unit: item.unit,
-        quantity: row.quantity,
-        unitPrice: item.effectivePrice,
-        total: lineValue(row.quantity, item.effectivePrice),
-      };
-    });
-    const amount = bounded(
-      lines.reduce((s, i) => s + units(i.total, 2), 0n),
-      2,
-    );
-    const { items: _, ...header } = value;
-    void _;
+    const order = c.orders.find((o) => o.id === value.orderId);
+    if (!order || order.cancelled)
+      throw new BusinessError("Selecione um Pedido válido do mesmo contrato.");
     return tx.salesInvoice.create({
       data: {
-        ...header,
+        ...value,
         caseId: c.id,
         instrumentId: id,
-        amount,
-        items: { create: lines },
+        periodId: order.periodId,
       },
     });
   });
@@ -711,6 +653,19 @@ export async function saveGuarantee(
         });
   });
 }
+function assertNewChangeDate(c: ContractAggregate, date: Date) {
+  const latest = changeEvents(c).at(-1);
+  if (latest && date < latest.date)
+    throw new BusinessError(
+      "A data não pode anteceder a última alteração registrada. Preserve a ordem dos documentos.",
+    );
+}
+function assertLatestChange(c: ContractAggregate, id: string) {
+  if (changeEvents(c).at(-1)?.id !== id)
+    throw new BusinessError(
+      "Existem alterações posteriores. Exclua ou cancele primeiro a alteração mais recente para preservar o histórico.",
+    );
+}
 export async function createAmendment(
   db: PrismaClient,
   actorId: string,
@@ -724,32 +679,127 @@ export async function createAmendment(
     const term = assertActive(c, id);
     if (term.instrumentType !== "TERM")
       throw new BusinessError("Aditivos são exclusivos de Termos de Contrato.");
+    assertNewChangeDate(c, value.date);
+    const b = contractBalances(c);
+    const changes = value.items.filter(
+      (i) =>
+        units(i.quantityDelta, 3) !== 0n || units(i.unitPriceDelta, 4) !== 0n,
+    );
+    for (const item of changes)
+      if (!c.items.some((i) => i.id === item.contractItemId))
+        throw new BusinessError("Item não pertence ao contrato.");
+    const delta = units(value.valueDelta, 2);
+    if (
+      value.kind === "ADDITION" &&
+      (delta < 0n ||
+        !changes.some(
+          (i) =>
+            units(i.quantityDelta, 3) > 0n || units(i.unitPriceDelta, 4) > 0n,
+        ) ||
+        changes.some(
+          (i) =>
+            units(i.quantityDelta, 3) < 0n || units(i.unitPriceDelta, 4) < 0n,
+        ) ||
+        value.newEndDate)
+    )
+      throw new BusinessError(
+        "Acréscimo exige aumento de quantidade e/ou valor de item, sem reduções ou mudança de vigência.",
+      );
+    if (
+      value.kind === "SUPPRESSION" &&
+      (delta > 0n ||
+        !changes.some(
+          (i) =>
+            units(i.quantityDelta, 3) < 0n || units(i.unitPriceDelta, 4) < 0n,
+        ) ||
+        changes.some(
+          (i) =>
+            units(i.quantityDelta, 3) > 0n || units(i.unitPriceDelta, 4) > 0n,
+        ) ||
+        value.newEndDate)
+    )
+      throw new BusinessError(
+        "Supressão exige redução de quantidade e/ou valor de item, sem aumentos ou mudança de vigência.",
+      );
+    if (value.kind === "EXTENSION" || value.kind === "RENEWAL") {
+      if (
+        !value.newEndDate ||
+        !b.currentPeriod.endsAt ||
+        value.newEndDate <= b.currentPeriod.endsAt
+      )
+        throw new BusinessError(
+          "Informe uma nova vigência posterior ao fim do período atual.",
+        );
+      if (changes.length || delta !== 0n)
+        throw new BusinessError(
+          "Prorrogação e Renovação não alteram quantidades atualizadas nem preços. Use Múltiplas Alterações para outras mudanças.",
+        );
+    }
+    if (value.kind === "RENEWAL" && !term.continuous)
+      throw new BusinessError(
+        "Renovação exige contrato de natureza Continuado.",
+      );
     if (value.newEndDate && term.validFrom && value.newEndDate < term.validFrom)
       throw new BusinessError("Nova vigência anterior ao início do Termo.");
-    if (
-      !value.newEndDate &&
-      units(value.valueDelta, 2) === 0n &&
-      !value.items.some(
-        (i) =>
-          units(i.quantityDelta, 3) !== 0n || units(i.unitPriceDelta, 4) !== 0n,
-      )
-    )
+    if (!value.newEndDate && !changes.length && delta === 0n)
       throw new BusinessError(
         "Informe ao menos uma alteração de valor, prazo ou item.",
       );
-    for (const item of value.items)
-      if (!c.items.some((i) => i.id === item.contractItemId))
-        throw new BusinessError("Item não pertence ao contrato.");
-    const { items, ...header } = value;
+    const { items: _, ...header } = value;
+    void _;
     return tx.contractAmendment.create({
       data: {
         ...header,
         caseId: c.id,
         instrumentId: id,
-        items: { create: items },
+        items: { create: changes },
       },
     });
   });
+}
+export async function createEndorsement(
+  db: PrismaClient,
+  actorId: string,
+  id: string,
+  version: number,
+  input: unknown,
+) {
+  const value = endorsementSchema.parse(input);
+  unique(value.items.map((i) => i.contractItemId));
+  return mutate(
+    db,
+    actorId,
+    id,
+    version,
+    "CREATE_ENDORSEMENT",
+    async (tx, c) => {
+      assertActive(c, id);
+      assertNewChangeDate(c, value.signatureDate);
+      const b = contractBalances(c);
+      for (const row of value.items)
+        if (!b.items.some((i) => i.id === row.contractItemId))
+          throw new BusinessError("Item não pertence ao contrato.");
+      const changed = value.items.filter(
+        (row) =>
+          units(row.unitPrice, 4) !==
+          b.items.find((i) => i.id === row.contractItemId)!.priceUnits,
+      );
+      if (!changed.length)
+        throw new BusinessError(
+          "Informe um novo valor para pelo menos um item.",
+        );
+      const { items: _, ...header } = value;
+      void _;
+      return tx.contractEndorsement.create({
+        data: {
+          ...header,
+          caseId: c.id,
+          instrumentId: id,
+          items: { create: changed },
+        },
+      });
+    },
+  );
 }
 export async function cancelAmendment(
   db: PrismaClient,
@@ -766,6 +816,18 @@ export async function cancelAmendment(
       )
     )
       throw new BusinessError("Aditivo inválido ou já cancelado.");
+    assertLatestChange(c, amendmentId);
+    const period = c.periods.find((p) => p.renewalId === amendmentId);
+    if (period) {
+      if (
+        c.orders.some((o) => o.periodId === period.id) ||
+        c.invoices.some((n) => n.periodId === period.id)
+      )
+        throw new BusinessError(
+          "A Renovação já possui Pedidos ou notas no novo período. Exclua esses registros antes.",
+        );
+      await tx.contractPeriod.delete({ where: { id: period.id } });
+    }
     await tx.contractAmendment.update({
       where: { id: amendmentId },
       data: { cancelled: true },
@@ -789,16 +851,7 @@ export async function getContract(db: PrismaClient, id: string) {
 export function contractValueCheck(c: ContractAggregate, id: string) {
   const instrument = c.instruments.find((i) => i.id === id)!;
   const b = contractBalances(c);
-  const amount =
-    instrument.instrumentType === "TERM"
-      ? fixed(
-          units(instrument.amount ?? "0", 2) +
-            c.amendments
-              .filter((a) => !a.cancelled && a.instrumentId === id)
-              .reduce((s, a) => s + units(a.valueDelta, 2), 0n),
-          2,
-        )
-      : instrument.amount;
+  const amount = instrument.currentAmount === null ? null : fixed(b.value, 2);
   return reconcileContractValue(
     amount,
     b.items.map((i) => ({
@@ -906,6 +959,15 @@ export async function updateOrder(
       )
     )
       throw new BusinessError("Preserve os itens já registrados no pedido.");
+    const b = contractBalances(c);
+    const period = c.periods.find((p) => p.id === order.periodId);
+    if (
+      (period?.startsAt && value.orderDate < period.startsAt) ||
+      (period?.endsAt && value.orderDate > period.endsAt)
+    )
+      throw new BusinessError(
+        "A data deve permanecer dentro do período do Pedido.",
+      );
     for (const row of value.items) {
       const old = order.items.find(
         (i) => i.contractItemId === row.contractItemId,
@@ -914,17 +976,16 @@ export async function updateOrder(
         throw new BusinessError(
           "Para solicitar outro item, crie um novo pedido.",
         );
-      const billed = c.invoices
-        .filter((n) => !n.cancelled)
-        .flatMap((n) => n.items)
-        .filter((i) => i.orderItemId === old.id)
-        .reduce((s, i) => s + units(i.quantity, 3), 0n);
       if (
-        units(row.quantity, 3) < units(old.suppliedQuantity, 3) ||
-        units(row.quantity, 3) < billed
+        order.periodId !== b.currentPeriod.id &&
+        units(row.quantity, 3) > units(old.requestedQuantity, 3)
       )
         throw new BusinessError(
-          "Quantidade pedida inferior ao que já foi fornecido ou faturado.",
+          "Não aumente a quantidade pedida em período encerrado.",
+        );
+      if (units(row.quantity, 3) < units(old.suppliedQuantity, 3))
+        throw new BusinessError(
+          "Quantidade pedida inferior ao que já foi fornecido.",
         );
       await tx.supplyOrderItem.update({
         where: { id: old.id },
@@ -954,7 +1015,8 @@ export async function copySourceItems(
         c.items.length ||
         c.orders.length ||
         c.invoices.length ||
-        c.amendments.length
+        c.amendments.length ||
+        c.endorsements.length
       )
         throw new BusinessError(
           "A cópia inicial está disponível apenas para contratos de origem ainda sem itens ou execução.",
@@ -1016,7 +1078,8 @@ export async function deleteContractItem(
         c.opportunityId ||
         c.orders.length ||
         c.invoices.length ||
-        c.amendments.length
+        c.amendments.length ||
+        c.endorsements.length
       )
         throw new BusinessError(
           "Só é possível excluir itens manuais antes da execução.",
@@ -1026,4 +1089,288 @@ export async function deleteContractItem(
       await tx.contractItem.delete({ where: { id: itemId } });
     },
   );
+}
+
+function confirmedDeletion(input: unknown) {
+  z.object({
+    confirmed: z.literal(true, {
+      error: "Confirme a exclusão irreversível dos dados.",
+    }),
+  }).parse(input);
+}
+async function eraseInvoices(tx: Prisma.TransactionClient, ids: string[]) {
+  await tx.invoiceReceipt.deleteMany({ where: { invoiceId: { in: ids } } });
+  await tx.salesInvoiceItem.deleteMany({ where: { invoiceId: { in: ids } } });
+  await tx.salesInvoice.deleteMany({ where: { id: { in: ids } } });
+}
+export async function deleteInvoice(
+  db: PrismaClient,
+  actorId: string,
+  id: string,
+  version: number,
+  invoiceId: string,
+  input: unknown,
+) {
+  confirmedDeletion(input);
+  idSchema.parse(invoiceId);
+  return mutate(db, actorId, id, version, "DELETE_INVOICE", async (tx, c) => {
+    if (!c.invoices.some((i) => i.id === invoiceId))
+      throw new BusinessError("Nota fiscal não pertence ao contrato.");
+    await eraseInvoices(tx, [invoiceId]);
+  });
+}
+export async function deleteOrder(
+  db: PrismaClient,
+  actorId: string,
+  id: string,
+  version: number,
+  orderId: string,
+  input: unknown,
+) {
+  confirmedDeletion(input);
+  idSchema.parse(orderId);
+  return mutate(db, actorId, id, version, "DELETE_ORDER", async (tx, c) => {
+    if (!c.orders.some((o) => o.id === orderId))
+      throw new BusinessError("Pedido não pertence ao contrato.");
+    await eraseInvoices(
+      tx,
+      c.invoices.filter((n) => n.orderId === orderId).map((n) => n.id),
+    );
+    await tx.supplyOrderItem.deleteMany({ where: { orderId } });
+    await tx.supplyOrder.delete({ where: { id: orderId } });
+  });
+}
+export async function deleteAmendment(
+  db: PrismaClient,
+  actorId: string,
+  id: string,
+  version: number,
+  amendmentId: string,
+  input: unknown,
+) {
+  confirmedDeletion(input);
+  idSchema.parse(amendmentId);
+  return mutate(db, actorId, id, version, "DELETE_AMENDMENT", async (tx, c) => {
+    const amendment = c.amendments.find(
+      (a) => a.id === amendmentId && a.instrumentId === id,
+    );
+    if (!amendment)
+      throw new BusinessError("Aditivo não pertence ao contrato.");
+    if (!amendment.cancelled) assertLatestChange(c, amendment.id);
+    const period = c.periods.find((p) => p.renewalId === amendmentId);
+    if (period) {
+      if (
+        c.orders.some((o) => o.periodId === period.id) ||
+        c.invoices.some((n) => n.periodId === period.id)
+      )
+        throw new BusinessError(
+          "A Renovação possui Pedidos ou notas do novo período. Exclua esses registros antes.",
+        );
+      await tx.contractPeriod.delete({ where: { id: period.id } });
+    }
+    await tx.contractAmendmentItem.deleteMany({ where: { amendmentId } });
+    await tx.contractAmendment.delete({ where: { id: amendmentId } });
+  });
+}
+export async function deleteEndorsement(
+  db: PrismaClient,
+  actorId: string,
+  id: string,
+  version: number,
+  endorsementId: string,
+  input: unknown,
+) {
+  confirmedDeletion(input);
+  idSchema.parse(endorsementId);
+  return mutate(
+    db,
+    actorId,
+    id,
+    version,
+    "DELETE_ENDORSEMENT",
+    async (tx, c) => {
+      if (
+        !c.endorsements.some(
+          (e) => e.id === endorsementId && e.instrumentId === id,
+        )
+      )
+        throw new BusinessError("Apostilamento não pertence ao contrato.");
+      assertLatestChange(c, endorsementId);
+      await tx.contractEndorsementItem.deleteMany({ where: { endorsementId } });
+      await tx.contractEndorsement.delete({ where: { id: endorsementId } });
+    },
+  );
+}
+export async function deleteContract(
+  db: PrismaClient,
+  actorId: string,
+  id: string,
+  version: number,
+  input: unknown,
+) {
+  confirmedDeletion(input);
+  idSchema.parse(id);
+  z.number().int().positive().parse(version);
+  return db.$transaction(
+    async (tx) => {
+      const instrument = await tx.contract.findUnique({ where: { id } });
+      if (
+        !instrument ||
+        (instrument.instrumentType === "COMMITMENT" && !instrument.substitutive)
+      )
+        throw new BusinessError("Contrato não encontrado.");
+      if (instrument.opportunityId)
+        await tx.$queryRaw`SELECT "id" FROM "Opportunity" WHERE "id"=${instrument.opportunityId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT "id" FROM "ContractCase" WHERE "id"=${instrument.caseId} FOR UPDATE`;
+      const c = await tx.contractCase.findUniqueOrThrow({
+        where: { id: instrument.caseId },
+        include: caseInclude,
+      });
+      if (c.version !== version) throw conflict();
+      if (
+        c.instruments.filter(
+          (i) => i.instrumentType !== "COMMITMENT" || i.substitutive,
+        ).length > 1
+      )
+        throw new BusinessError(
+          "Separe os contratos legados antes de excluir; existem outros contratos na mesma base.",
+        );
+      await eraseInvoices(
+        tx,
+        c.invoices.map((i) => i.id),
+      );
+      await tx.supplyOrderItem.deleteMany({ where: { caseId: c.id } });
+      await tx.supplyOrder.deleteMany({ where: { caseId: c.id } });
+      await tx.contractPeriod.deleteMany({ where: { caseId: c.id } });
+      await tx.contractEndorsementItem.deleteMany({ where: { caseId: c.id } });
+      await tx.contractEndorsement.deleteMany({ where: { caseId: c.id } });
+      await tx.contractAmendmentItem.deleteMany({ where: { caseId: c.id } });
+      await tx.contractAmendment.deleteMany({ where: { caseId: c.id } });
+      await tx.contractGuarantee.deleteMany({ where: { caseId: c.id } });
+      await tx.contractItem.deleteMany({ where: { caseId: c.id } });
+      await tx.contract.updateMany({
+        where: { caseId: c.id },
+        data: { parentTermId: null },
+      });
+      await tx.contract.deleteMany({ where: { caseId: c.id } });
+      await tx.contractCase.delete({ where: { id: c.id } });
+      await audit(tx, actorId, c.id, "DELETE_CONTRACT", c, null);
+    },
+    { timeout: 20000 },
+  );
+}
+
+export async function searchContractOptions(db: PrismaClient, input: unknown) {
+  const value = z
+    .object({
+      kind: z.enum(["agency", "opportunity", "source"]),
+      q: z.string().trim().max(120).default(""),
+      page: z.coerce.number().int().min(1).max(10000).default(1),
+      sourceId: optionalId,
+    })
+    .parse(input);
+  if (value.kind === "source") {
+    if (!value.sourceId)
+      throw new BusinessError("Selecione a contratação de origem.");
+    const source = await db.opportunity.findFirst({
+      where: { id: value.sourceId, archived: false },
+      include: {
+        organization: { select: { id: true, legalName: true } },
+        items: {
+          where: { winner: true, winningUnitPrice: { not: null } },
+          orderBy: { number: "asc" },
+          include: { contractedItems: { select: { quantity: true } } },
+        },
+      },
+    });
+    if (!source)
+      throw new BusinessError("Contratação de origem não encontrada.");
+    return {
+      id: source.id,
+      reference: source.reference,
+      organizationId: source.organizationId,
+      organization: {
+        id: source.organization.id,
+        label: source.organization.legalName,
+      },
+      items: source.items
+        .map((i) => ({
+          id: i.id,
+          number: i.number,
+          description: i.description,
+          unit: i.unit,
+          brand: i.brand,
+          model: i.model,
+          quantity: fixed(
+            units(i.quantity, 3) -
+              i.contractedItems.reduce(
+                (s, row) => s + units(row.quantity, 3),
+                0n,
+              ),
+            3,
+          ),
+          unitPrice: i.winningUnitPrice!.toFixed(4),
+        }))
+        .filter((i) => units(i.quantity, 3) > 0n),
+    };
+  }
+  const skip = (value.page - 1) * 20;
+  if (value.kind === "agency") {
+    const rows = await db.organization.findMany({
+      where: {
+        active: true,
+        roles: { has: "PUBLIC_AGENCY" },
+        ...(value.q
+          ? {
+              OR: [
+                { legalName: { contains: value.q, mode: "insensitive" } },
+                { acronym: { contains: value.q, mode: "insensitive" } },
+                { cnpj: { contains: value.q.replace(/\D/g, "") || value.q } },
+              ],
+            }
+          : {}),
+      },
+      select: { id: true, legalName: true },
+      orderBy: [{ legalName: "asc" }, { id: "asc" }],
+      skip,
+      take: 21,
+    });
+    return {
+      items: rows.slice(0, 20).map((i) => ({ id: i.id, label: i.legalName })),
+      hasMore: rows.length > 20,
+    };
+  }
+  const rows = await db.opportunity.findMany({
+    where: {
+      archived: false,
+      ...(value.q
+        ? {
+            OR: [
+              { reference: { contains: value.q, mode: "insensitive" } },
+              { subject: { contains: value.q, mode: "insensitive" } },
+              {
+                organization: {
+                  legalName: { contains: value.q, mode: "insensitive" },
+                },
+              },
+            ],
+          }
+        : {}),
+    },
+    select: {
+      id: true,
+      reference: true,
+      organization: { select: { legalName: true } },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    skip,
+    take: 21,
+  });
+  return {
+    items: rows.slice(0, 20).map((i) => ({
+      id: i.id,
+      label: `${i.reference} · ${i.organization.legalName}`,
+    })),
+    hasMore: rows.length > 20,
+  };
 }

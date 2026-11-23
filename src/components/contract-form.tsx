@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ActionForm } from "./action-form";
 import { ButtonContent } from "./button-content";
@@ -11,8 +11,8 @@ import {
   reconcileContractValue,
   decimal,
 } from "@/lib/contracts";
+import { ContractSearch, type ContractChoice } from "./contract-search";
 import { money } from "@/lib/format";
-type Choice = { id: string; label: string };
 type Item = {
   id: string;
   number: number;
@@ -28,6 +28,7 @@ type Source = {
   reference: string;
   organizationId: string;
   items: Item[];
+  organization: ContractChoice;
 };
 export function InstrumentFields({
   type,
@@ -68,7 +69,7 @@ export function InstrumentFields({
       {type === "COMMITMENT" &&
         field("issuedAt", "Data de emissão do empenho", "date", true)}
       <label>
-        Valor do instrumento (R$) *
+        Valor original (R$) *
         <input
           className="field"
           name="amount"
@@ -77,6 +78,14 @@ export function InstrumentFields({
           required
           defaultValue={initial.amount ?? ""}
         />
+      </label>
+      <label className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          name="continuous"
+          defaultChecked={initial.continuous === "true"}
+        />
+        Continuado
       </label>
       <label>
         Situação *
@@ -140,15 +149,11 @@ export function InstrumentFields({
   );
 }
 export function ContractForm({
-  agencies = [],
-  sources = [],
   initial,
   id,
   version,
   initialItems = [],
 }: {
-  agencies?: Choice[];
-  sources?: Source[];
   initial?: Record<string, string | null>;
   id?: string;
   version?: number;
@@ -156,8 +161,46 @@ export function ContractForm({
 }) {
   const router = useRouter();
   const [type, setType] = useState(initial?.instrumentType ?? "");
-  const [sourceId, setSource] = useState("");
-  const source = sources.find((i) => i.id === sourceId);
+  const [source, setSource] = useState<Source | null>(null);
+  const [sourceChoice, setSourceChoice] = useState<ContractChoice | null>(null);
+  const [agency, setAgency] = useState<ContractChoice | null>(null);
+  const [sourceLoading, setSourceLoading] = useState(false);
+  const [sourceError, setSourceError] = useState("");
+  const sourceRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => sourceRequest.current?.abort(), []);
+  async function selectSource(choice: ContractChoice | null) {
+    sourceRequest.current?.abort();
+    setSourceChoice(choice);
+    setSource(null);
+    setSourceError("");
+    setComparison(null);
+    if (!choice) {
+      setSourceLoading(false);
+      return;
+    }
+    const controller = new AbortController();
+    sourceRequest.current = controller;
+    setSourceLoading(true);
+    try {
+      const response = await fetch(
+        `/api/admin/contratos/busca?kind=source&sourceId=${encodeURIComponent(choice.id)}`,
+        { cache: "no-store", signal: controller.signal },
+      );
+      if (!response.ok)
+        throw Error(
+          "Não foi possível carregar a contratação. Pesquise e selecione novamente.",
+        );
+      const data = (await response.json()) as Source;
+      if (!controller.signal.aborted) {
+        setSource(data);
+        setAgency(data.organization);
+      }
+    } catch (e) {
+      if (!controller.signal.aborted) setSourceError((e as Error).message);
+    } finally {
+      if (!controller.signal.aborted) setSourceLoading(false);
+    }
+  }
   const [comparison, setComparison] = useState<
     ReturnType<typeof reconcileContractValue> | null | undefined
   >(undefined);
@@ -205,7 +248,11 @@ export function ContractForm({
         className="contract-fields space-y-6"
         action={async (data) => {
           const raw = Object.fromEntries(data);
-          const instrument = { ...raw, instrumentType: type };
+          const instrument = {
+            ...raw,
+            instrumentType: type,
+            continuous: data.get("continuous") === "on",
+          };
           const items = source
             ? source.items
                 .filter((i) => data.get(`include-${i.id}`) === "on")
@@ -226,8 +273,8 @@ export function ContractForm({
               ? instrument
               : {
                   instrument,
-                  opportunityId: sourceId,
-                  organizationId: raw.organizationId,
+                  opportunityId: sourceChoice?.id ?? "",
+                  organizationId: agency?.id ?? "",
                   items,
                 },
             id,
@@ -244,6 +291,7 @@ export function ContractForm({
           Instrumento jurídico *
           <select
             className="field"
+            name="instrumentType"
             value={type}
             onChange={(e) => {
               setType(e.target.value);
@@ -264,42 +312,28 @@ export function ContractForm({
           <>
             {!id && (
               <div className="grid gap-5 sm:grid-cols-2">
-                <label>
-                  Contratação de origem (opcional)
-                  <select
-                    className="field"
-                    value={sourceId}
-                    onChange={(e) => {
-                      setSource(e.target.value);
-                      setComparison(null);
-                    }}
-                  >
-                    <option value="">Cadastro manual, sem licitação</option>
-                    {sources.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.reference}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Órgão público *
-                  <select
-                    className="field"
-                    name="organizationId"
-                    required
-                    key={sourceId}
-                    defaultValue={source?.organizationId ?? ""}
-                    disabled={!!source}
-                  >
-                    <option value="">Selecione</option>
-                    {agencies.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <ContractSearch
+                  label="Contratação de origem (opcional)"
+                  kind="opportunity"
+                  selected={sourceChoice}
+                  onSelect={selectSource}
+                />
+                <ContractSearch
+                  label="Órgão público"
+                  kind="agency"
+                  selected={agency}
+                  onSelect={setAgency}
+                  disabled={!!sourceChoice}
+                  required
+                />
+                {sourceLoading && (
+                  <p role="status">Carregando os itens vencedores…</p>
+                )}
+                {sourceError && (
+                  <p role="alert" className="text-red-800">
+                    {sourceError}
+                  </p>
+                )}
               </div>
             )}
             <div className="grid gap-5 sm:grid-cols-2">
@@ -368,7 +402,14 @@ export function ContractForm({
               </p>
             )}
             <div className="flex gap-3 border-t border-slate-100 pt-5">
-              <button className="btn" type="submit">
+              <button
+                className="btn"
+                type="submit"
+                disabled={
+                  sourceLoading ||
+                  (!id && (!agency || (!!sourceChoice && !source)))
+                }
+              >
                 <ButtonContent action="save" />
               </button>
               <button

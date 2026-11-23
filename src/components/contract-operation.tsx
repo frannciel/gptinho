@@ -24,9 +24,12 @@ export function ContractOperation({
       className="space-y-4"
       confirmation={confirmation}
       action={async (form) => {
-        const input: Record<string, unknown> = Object.fromEntries(form);
+        const input: Record<string, unknown> = {
+          ...Object.fromEntries(form),
+          confirmed: form.get("confirmed") === "true",
+        };
         const ids = form.getAll("itemId").map(String);
-        if (["order", "updateOrder", "invoice"].includes(operation))
+        if (["order", "updateOrder"].includes(operation))
           input.items = ids
             .filter(
               (i) =>
@@ -63,7 +66,9 @@ export function ContractOperation({
         );
         if (result.ok) {
           router.push(
-            `/contratos/${id}?tab=${String(form.get("tab") ?? "geral")}&saved=1`,
+            operation === "deleteContract"
+              ? "/contratos"
+              : `/contratos/${id}?tab=${String(form.get("tab") ?? "geral")}&saved=1`,
           );
           router.refresh();
         }
