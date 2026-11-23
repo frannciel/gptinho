@@ -473,6 +473,7 @@ model ContractAmendment {
   kind          AmendmentKind?
   renewalPeriod ContractPeriod?
   valueDelta    Decimal                 @default(0) @db.Decimal(18, 2)
+  updatedAmount Decimal?                @db.Decimal(18, 2)
   newEndDate    DateTime?               @db.Date
   cancelled     Boolean                 @default(false)
   documentUrl   String?
@@ -493,6 +494,7 @@ model ContractAmendmentItem {
   contractItem   ContractItem      @relation(fields: [contractItemId, caseId], references: [id, caseId], onDelete: Restrict)
   quantityDelta  Decimal           @default(0) @db.Decimal(18, 3)
   unitPriceDelta Decimal           @default(0) @db.Decimal(18, 4)
+  unitPrice      Decimal?          @db.Decimal(18, 4)
 
   @@unique([amendmentId, contractItemId])
 }

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { beforeAll, beforeEach, afterAll, describe, it, expect } from "vitest";
 import { createDb } from "@/lib/db-client";
 import * as service from "@/server/contracts";
-import { orderStatus } from "@/lib/contracts";
+import { orderStatus, fixed, units } from "@/lib/contracts";
 import { deleteOpportunity } from "@/server/opportunities";
 const url = process.env.TEST_DATABASE_URL;
 if (!url || !/(_test|govnex-test)/.test(new URL(url).pathname))
@@ -136,7 +136,7 @@ const amendment = async (
     reference,
     date,
     kind,
-    valueDelta: "0",
+    updatedAmount: "0",
     newEndDate,
     items:
       quantityDelta !== "0" || unitPriceDelta !== "0"
@@ -144,7 +144,11 @@ const amendment = async (
             {
               contractItemId: (await current(id)).case.items[0].id,
               quantityDelta,
-              unitPriceDelta,
+              unitPrice: fixed(
+                (await balance(id)).items[0].priceUnits +
+                  units(unitPriceDelta, 4),
+                4,
+              ),
             },
           ]
         : [],
@@ -201,7 +205,7 @@ describe.sequential(
       expect(ne.caseId).not.toBe(term.caseId);
       expect((await service.getContractStats(db)).contracted).toBe(200000n);
     });
-    it("corrige valor original com execução e aditivo sem modificar valor atualizado", async () => {
+    it("recalcula desde o original corrigido e reaplica o total absoluto do aditivo", async () => {
       const term = await create();
       await order(term.id);
       await amendment(term.id);
@@ -217,7 +221,7 @@ describe.sequential(
       );
       const c = await current(term.id);
       expect(c.amount!.toFixed(2)).toBe("9999.00");
-      expect(c.initialCurrentAmount!.toFixed(2)).toBe("1000.00");
+      expect(c.initialCurrentAmount!.toFixed(2)).toBe("9999.00");
       expect(c.currentAmount!.toFixed(2)).toBe("1100.00");
       expect(service.contractValueCheck(c.case, c.id).matches).toBe(true);
     });
@@ -928,6 +932,173 @@ describe.sequential(
         sourceId: source.id,
       })) as { organization: { id: string } };
       expect(detail.organization.id).toBe(agencyId);
+    });
+    it("recalcula o valor atualizado e o período ao corrigir o original sem atos posteriores", async () => {
+      const term = await create();
+      await order(term.id);
+      await service.updateContract(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        { ...header("TERM", "CT-001", "2000"), continuous: false },
+      );
+      const c = await current(term.id);
+      expect(c.currentAmount!.toFixed(2)).toBe("2000.00");
+      expect(c.case.periods[0].amount!.toFixed(2)).toBe("2000.00");
+      expect(c.initialCurrentAmount!.toFixed(2)).toBe("2000.00");
+    });
+    it("recalcula o original corrigido reaplicando o efeito do apostilamento", async () => {
+      const term = await create();
+      await endorsement(term.id, "11");
+      await service.updateContract(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        { ...header("TERM", "CT-001", "2000"), continuous: false },
+      );
+      expect((await current(term.id)).currentAmount!.toFixed(2)).toBe(
+        "2100.00",
+      );
+      expect((await balance(term.id)).items[0].effectivePrice).toBe("11.0000");
+    });
+    it("grava novo preço absoluto e o total calculado quando o cabeçalho é zero", async () => {
+      const term = await create();
+      const itemId = (await current(term.id)).case.items[0].id;
+      const ad = await service.createAmendment(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        {
+          reference: "ABS-01",
+          date: "2026-11-05",
+          kind: "ADDITION",
+          updatedAmount: "0",
+          items: [
+            {
+              contractItemId: itemId,
+              quantityDelta: "0",
+              unitPrice: "11.2500",
+            },
+          ],
+          variationAll: "12.5",
+        },
+      );
+      expect(ad.updatedAmount!.toFixed(2)).toBe("1125.00");
+      expect(ad.valueDelta.toFixed(2)).toBe("0.00");
+      const row = await db.contractAmendmentItem.findFirstOrThrow({
+        where: { amendmentId: ad.id },
+      });
+      expect(row.unitPrice!.toFixed(4)).toBe("11.2500");
+      expect(row.unitPriceDelta.toFixed(4)).toBe("0.0000");
+      expect(Object.keys(ad)).not.toContain("variationAll");
+      expect((await current(term.id)).currentAmount!.toFixed(2)).toBe(
+        "1125.00",
+      );
+    });
+    it("valor informado no cabeçalho é total atualizado e não variação a acrescentar", async () => {
+      const term = await create();
+      const ad = await service.createAmendment(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        {
+          reference: "ABS-01",
+          date: "2026-11-05",
+          kind: "MIXED",
+          updatedAmount: "1500",
+          items: [
+            {
+              contractItemId: (await current(term.id)).case.items[0].id,
+              quantityDelta: "0",
+              unitPrice: "11",
+            },
+          ],
+        },
+      );
+      expect(ad.updatedAmount!.toFixed(2)).toBe("1500.00");
+      expect((await current(term.id)).currentAmount!.toFixed(2)).toBe(
+        "1500.00",
+      );
+      expect(
+        service.contractValueCheck((await current(term.id)).case, term.id)
+          .matches,
+      ).toBe(false);
+    });
+    it("cabeçalho vazio usa a soma completa dos itens e não só a diferença", async () => {
+      const term = await create();
+      await service.createAmendment(
+        db,
+        actorId,
+        term.id,
+        await version(term.id),
+        {
+          reference: "ABS-01",
+          date: "2026-11-05",
+          kind: "ADDITION",
+          updatedAmount: "",
+          items: [
+            {
+              contractItemId: (await current(term.id)).case.items[0].id,
+              quantityDelta: "10",
+              unitPrice: "10",
+            },
+          ],
+        },
+      );
+      expect((await current(term.id)).currentAmount!.toFixed(2)).toBe(
+        "1100.00",
+      );
+    });
+    it("novas quantidades fracionárias são recusadas em contratos, Pedidos, fornecimento e aditivos", async () => {
+      await expect(
+        service.createContract(db, actorId, {
+          instrument: header(),
+          organizationId: agencyId,
+          items: [item("1.5")],
+        }),
+      ).rejects.toThrow("inteira");
+      const term = await create();
+      await expect(order(term.id, "1.5")).rejects.toThrow("inteira");
+      const p = await order(term.id);
+      const c = await current(term.id);
+      await expect(
+        service.updateSupply(db, actorId, term.id, c.case.version, {
+          orderId: p.id,
+          items: [
+            { id: c.case.orders[0].items[0].id, suppliedQuantity: "0.5" },
+          ],
+        }),
+      ).rejects.toThrow("inteira");
+      await expect(
+        service.createAmendment(db, actorId, term.id, await version(term.id), {
+          reference: "FRA-01",
+          date: "2026-11-05",
+          kind: "ADDITION",
+          items: [
+            {
+              contractItemId: c.case.items[0].id,
+              quantityDelta: "0.5",
+              unitPrice: "10",
+            },
+          ],
+        }),
+      ).rejects.toThrow("inteira");
+    });
+    it("a correção do original não pode reduzir o atualizado abaixo do faturamento válido", async () => {
+      const term = await create();
+      const p = await order(term.id);
+      await invoice(term.id, p.id, "100");
+      await expect(
+        service.updateContract(db, actorId, term.id, await version(term.id), {
+          ...header("TERM", "CT-001", "50"),
+          continuous: false,
+        }),
+      ).rejects.toThrow("faturado");
+      expect((await current(term.id)).amount!.toFixed(2)).toBe("1000.00");
     });
   },
 );

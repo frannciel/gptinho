@@ -14,7 +14,7 @@ import {
   units,
   fixed,
   bounded,
-  decimal,
+  integerQuantity,
   reconcileContractValue,
   endorsementSchema,
 } from "@/lib/contracts";
@@ -376,18 +376,14 @@ export async function updateContract(
           value.instrumentType === "TERM"
             ? {
                 ...value,
-                ...(old.initialCurrentAmount === null
-                  ? { initialCurrentAmount: value.amount }
-                  : {}),
+                initialCurrentAmount: value.amount,
                 issuedAt: old.issuedAt,
                 commitmentReference: old.commitmentReference,
                 supplyDeadline: null,
               }
             : {
                 ...value,
-                ...(old.initialCurrentAmount === null
-                  ? { initialCurrentAmount: value.amount }
-                  : {}),
+                initialCurrentAmount: value.amount,
                 signatureDate: null,
                 validFrom: null,
                 validUntil: null,
@@ -512,7 +508,7 @@ export async function updateSupply(
     .object({
       orderId: idSchema,
       items: z
-        .array(z.object({ id: idSchema, suppliedQuantity: decimal(3) }))
+        .array(z.object({ id: idSchema, suppliedQuantity: integerQuantity() }))
         .min(1)
         .max(1000),
     })
@@ -681,47 +677,44 @@ export async function createAmendment(
       throw new BusinessError("Aditivos são exclusivos de Termos de Contrato.");
     assertNewChangeDate(c, value.date);
     const b = contractBalances(c);
-    const changes = value.items.filter(
-      (i) =>
-        units(i.quantityDelta, 3) !== 0n || units(i.unitPriceDelta, 4) !== 0n,
-    );
-    for (const item of changes)
-      if (!c.items.some((i) => i.id === item.contractItemId))
+    for (const row of value.items)
+      if (!b.items.some((i) => i.id === row.contractItemId))
         throw new BusinessError("Item não pertence ao contrato.");
-    const delta = units(value.valueDelta, 2);
+    const changes = value.items.filter(
+      (row) =>
+        units(row.quantityDelta, 3) !== 0n ||
+        units(row.unitPrice, 4) !==
+          b.items.find((i) => i.id === row.contractItemId)!.priceUnits,
+    );
+    const positive = changes.some(
+      (row) =>
+        units(row.quantityDelta, 3) > 0n ||
+        units(row.unitPrice, 4) >
+          b.items.find((i) => i.id === row.contractItemId)!.priceUnits,
+    );
+    const negative = changes.some(
+      (row) =>
+        units(row.quantityDelta, 3) < 0n ||
+        units(row.unitPrice, 4) <
+          b.items.find((i) => i.id === row.contractItemId)!.priceUnits,
+    );
     if (
       value.kind === "ADDITION" &&
-      (delta < 0n ||
-        !changes.some(
-          (i) =>
-            units(i.quantityDelta, 3) > 0n || units(i.unitPriceDelta, 4) > 0n,
-        ) ||
-        changes.some(
-          (i) =>
-            units(i.quantityDelta, 3) < 0n || units(i.unitPriceDelta, 4) < 0n,
-        ) ||
-        value.newEndDate)
+      (!positive || negative || value.newEndDate)
     )
       throw new BusinessError(
-        "Acréscimo exige aumento de quantidade e/ou valor de item, sem reduções ou mudança de vigência.",
+        "Acréscimo exige aumento de quantidade e/ou novo preço de item, sem reduções ou mudança de vigência.",
       );
     if (
       value.kind === "SUPPRESSION" &&
-      (delta > 0n ||
-        !changes.some(
-          (i) =>
-            units(i.quantityDelta, 3) < 0n || units(i.unitPriceDelta, 4) < 0n,
-        ) ||
-        changes.some(
-          (i) =>
-            units(i.quantityDelta, 3) > 0n || units(i.unitPriceDelta, 4) > 0n,
-        ) ||
-        value.newEndDate)
+      (!negative || positive || value.newEndDate)
     )
       throw new BusinessError(
-        "Supressão exige redução de quantidade e/ou valor de item, sem aumentos ou mudança de vigência.",
+        "Supressão exige redução de quantidade e/ou novo preço de item, sem aumentos ou mudança de vigência.",
       );
-    if (value.kind === "EXTENSION" || value.kind === "RENEWAL") {
+    const periodOnly = value.kind === "EXTENSION" || value.kind === "RENEWAL";
+    const amount = units(value.updatedAmount, 2);
+    if (periodOnly) {
       if (
         !value.newEndDate ||
         !b.currentPeriod.endsAt ||
@@ -730,7 +723,7 @@ export async function createAmendment(
         throw new BusinessError(
           "Informe uma nova vigência posterior ao fim do período atual.",
         );
-      if (changes.length || delta !== 0n)
+      if (changes.length || amount !== 0n)
         throw new BusinessError(
           "Prorrogação e Renovação não alteram quantidades atualizadas nem preços. Use Múltiplas Alterações para outras mudanças.",
         );
@@ -741,7 +734,20 @@ export async function createAmendment(
       );
     if (value.newEndDate && term.validFrom && value.newEndDate < term.validFrom)
       throw new BusinessError("Nova vigência anterior ao início do Termo.");
-    if (!value.newEndDate && !changes.length && delta === 0n)
+    const projected = b.items.map((i) => {
+      const row = value.items.find((r) => r.contractItemId === i.id);
+      return {
+        quantity: bounded(
+          i.quantityUnits + (row ? units(row.quantityDelta, 3) : 0n),
+          3,
+        ),
+        unitPrice: row?.unitPrice ?? i.effectivePrice,
+      };
+    });
+    const calculated = reconcileContractValue("0.00", projected).total;
+    const updated =
+      amount === 0n ? bounded(units(calculated, 2), 2) : value.updatedAmount;
+    if (!value.newEndDate && !changes.length && units(updated, 2) === b.value)
       throw new BusinessError(
         "Informe ao menos uma alteração de valor, prazo ou item.",
       );
@@ -750,9 +756,12 @@ export async function createAmendment(
     return tx.contractAmendment.create({
       data: {
         ...header,
+        updatedAmount: periodOnly ? null : updated,
         caseId: c.id,
         instrumentId: id,
-        items: { create: changes },
+        items: {
+          create: changes.map((row) => ({ ...row, unitPriceDelta: "0" })),
+        },
       },
     });
   });

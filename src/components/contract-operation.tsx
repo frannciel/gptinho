@@ -45,18 +45,6 @@ export function ContractOperation({
             id: i,
             suppliedQuantity: String(form.get(`supplied-${i}`) ?? ""),
           }));
-        if (operation === "amendment")
-          input.items = ids
-            .map((i) => ({
-              contractItemId: i,
-              quantityDelta: String(form.get(`quantityDelta-${i}`) ?? "0"),
-              unitPriceDelta: String(form.get(`unitPriceDelta-${i}`) ?? "0"),
-            }))
-            .filter(
-              (i) =>
-                !/^0([.,]0+)?$/.test(i.quantityDelta) ||
-                !/^0([.,]0+)?$/.test(i.unitPriceDelta),
-            );
         const result = await contractAction(
           operation,
           input,

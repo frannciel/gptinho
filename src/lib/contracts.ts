@@ -73,6 +73,23 @@ export function decimal(scale: number, positive = false, signed = false) {
       return negative && !/^0\.0+$/.test(value) ? `-${value}` : value;
     });
 }
+// Keep the database scale for historical records, but new quantities are whole units.
+export function integerQuantity(positive = false, signed = false) {
+  return decimal(3, positive, signed).refine(
+    (v) => units(v, 3) % 1000n === 0n,
+    "Informe uma quantidade inteira, sem casas decimais.",
+  );
+}
+export function quantityText(value: { toString(): string } | string | bigint) {
+  const raw = typeof value === "bigint" ? fixed(value, 3) : value.toString();
+  const [whole, fraction = ""] = raw.split(".");
+  return /^0*$/.test(fraction)
+    ? whole
+    : `${whole},${fraction.replace(/0+$/, "")}`;
+}
+export function quantityInput(value: { toString(): string } | string) {
+  return quantityText(value).replace(",", ".");
+}
 export const instrumentSchema = z
   .object({
     instrumentType: z.enum(["TERM", "COMMITMENT"]),
@@ -127,7 +144,7 @@ export const contractItemSchema = z.object({
   unit: shortText,
   brand: optionalText,
   model: optionalText,
-  quantity: decimal(3, true),
+  quantity: integerQuantity(true),
   unitPrice: decimal(4),
   opportunityItemId: optionalId,
 });
@@ -144,7 +161,9 @@ export const orderSchema = z.object({
   deadline: optionalDay,
   notes: optionalText,
   items: z
-    .array(z.object({ contractItemId: idSchema, quantity: decimal(3, true) }))
+    .array(
+      z.object({ contractItemId: idSchema, quantity: integerQuantity(true) }),
+    )
     .min(1)
     .max(1000),
 });
@@ -209,7 +228,12 @@ export const amendmentSchema = z
     reference: shortText,
     date: day,
     kind: z.enum(["ADDITION", "SUPPRESSION", "EXTENSION", "RENEWAL", "MIXED"]),
-    valueDelta: decimal(2, false, true).default("0"),
+    updatedAmount: z
+      .preprocess(
+        (v) => (typeof v === "string" && !v.trim() ? "0" : v),
+        decimal(2),
+      )
+      .default("0"),
     newEndDate: optionalDay,
     documentUrl,
     notes: optionalText,
@@ -217,8 +241,13 @@ export const amendmentSchema = z
       .array(
         z.object({
           contractItemId: idSchema,
-          quantityDelta: decimal(3, false, true),
-          unitPriceDelta: decimal(4, false, true),
+          quantityDelta: z
+            .preprocess(
+              (v) => (typeof v === "string" && !v.trim() ? "0" : v),
+              integerQuantity(false, true),
+            )
+            .default("0"),
+          unitPrice: decimal(4),
         }),
       )
       .max(1000)
