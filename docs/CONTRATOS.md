@@ -39,24 +39,29 @@ As buscas e alterações exigem autenticação de administrador. Consultas não 
 
 ## Valor original e valor atualizado
 
-| Campo            | Significado                                                                                   | Como alterar                                                                                   |
-| ---------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Valor original   | Valor cadastrado como referência original do instrumento.                                     | Pela edição do contrato, inclusive após pedidos ou alterações contratuais, mantendo auditoria. |
-| Valor atualizado | Valor vigente do período atual, resultante da base de execução e dos aditivos/apostilamentos. | Pelas alterações contratuais; não é um campo livre da edição.                                  |
+| Campo            | Significado                                                                      | Como alterar                                                                                    |
+| ---------------- | -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Valor original   | Referência original do instrumento.                                              | Pela edição do contrato, inclusive após Pedidos ou alterações contratuais, mantendo auditoria.  |
+| Valor atualizado | Valor vigente do período, calculado desde a base original e os atos registrados. | É recalculado ao alterar o original e ao registrar, cancelar ou excluir alterações contratuais. |
 
-No cadastro inicial, os dois valores começam iguais. A base inicial de execução é preservada separadamente para que uma correção posterior do valor original não recalcule valores já atualizados ou lançamentos financeiros.
+No cadastro inicial, os dois valores começam iguais. Ao corrigir o original, o backend atualiza a base de cálculo e reaplica, em ordem, aditivos, apostilamentos e renovações. Pedidos e notas anteriores mantêm seus próprios valores e preços gravados.
 
-`amount` armazena o valor original; `initialCurrentAmount` mantém a base de execução; `currentAmount` persiste o valor atualizado. A atualização deste último é calculada no backend e auditada, junto com os registros que a produziram.
+`amount` armazena o original; `initialCurrentAmount` mantém a base de cálculo sincronizada com o original corrigido; `currentAmount` persiste o resultado atualizado. O valor atualizado não é um campo livre da edição.
 
-O valor atualizado é comparado com a soma dos itens atualizados do período. Divergências em centavos geram alerta, sem impedir salvar um cadastro cujo preenchimento de itens ainda está em andamento. O formulário de edição também confere o valor original informado com seus itens de referência, sem transformar essa correção em alteração do valor atualizado.
+**Valores absolutos posteriores continuam sendo respeitados.** Se um aditivo fixa o total atualizado do contrato, esse total pode produzir o mesmo resultado após o recálculo do original. A operação sempre recalcula; ela não ignora o valor fixado pelo documento posterior.
 
-### Precisão
+O valor atualizado é comparado com o somatório dos itens atualizados do período. Diferenças em centavos geram alerta, sem impedir salvar um cadastro cujo preenchimento de itens ainda está em andamento. Valores já faturados continuam protegidos: uma correção que reduza indevidamente o orçamento abaixo do utilizado é revertida integralmente.
 
-- Quantidade: `Decimal(18,3)`.
-- Preço unitário inicial, atualizado e novo preço de apostilamento: `Decimal(18,4)`.
-- Valores de contrato, período, nota, garantia e recebimento: `Decimal(18,2)`.
-- Cálculos exatos com inteiros de escala fixa. Total por linha = quantidade × preço, arredondado HALF_UP para centavos. Totais são somas das linhas arredondadas.
-- Percentuais da interface usam até quatro casas. Eles são calculados por divisão exata com arredondamento HALF_UP, sem ponto flutuante financeiro.
+### Quantidades e precisão
+
+- Quantidades novas são **inteiras**, sem casas decimais, nos itens do contrato, Pedidos, fornecimento e variações quantitativas dos aditivos.
+- A apresentação remove casas decimais sem significado: `100.000` é mostrado como `100`.
+- Valores fracionários legados não são arredondados nem truncados pela migração. São sinalizados para revisão e continuam identificáveis com seu valor exato; novas alterações de quantidade exigem números inteiros.
+- A escala `Decimal(18,3)` permanece no banco por compatibilidade com esse histórico. A validação de novos dados exige quantidade matematicamente inteira.
+- Preços unitários iniciais, atualizados e novos preços dos atos: `Decimal(18,4)`.
+- Valores monetários de contrato, período, nota, garantia e recebimento: `Decimal(18,2)`.
+- Cálculos exatos com inteiros de escala fixa: total por linha = quantidade × preço, arredondado HALF_UP para centavos. Os totais somam as linhas arredondadas.
+- Percentuais dos formulários usam até quatro casas, com divisão exata e arredondamento HALF_UP, sem ponto flutuante financeiro.
 
 ## Períodos e contratos continuados
 
@@ -101,7 +106,17 @@ A guia Aditivos permanece exclusiva do Termo no MVP. Os novos registros utilizam
 | Renovação            | Abre novo período com quantitativo atualizado completo e preço mantido, em contrato continuado. |
 | Múltiplas Alterações | Permite combinar as alterações pertinentes, respeitando os saldos e os limites de dados.        |
 
-Para alterações de itens, se a variação monetária do cabeçalho ficar zero, o backend calcula a diferença do valor do período a partir dos itens. Uma variação monetária informada explicitamente é respeitada e continua sujeita à conferência com os itens e aos saldos financeiros.
+Os aditivos usam **Data de Assinatura** e registram o **novo preço unitário** de cada item alterado, em vez de acrescentar uma variação monetária ao preço anterior. A variação da quantidade continua sendo um acréscimo ou redução inteiro.
+
+O operador pode informar os novos preços individualmente ou preencher **Variação para todos (%)** e clicar em Aplicar a todos. O percentual incide sobre o preço atualizado de cada item e preenche os novos valores; estes ainda podem ser ajustados individualmente. O percentual não é persistido.
+
+**Valor Atualizado do Contrato (R$, opcional)** representa o total após o aditivo, nunca um valor a somar ao anterior:
+
+- Com zero ou vazio, o backend soma os totais de **todos** os itens após a alteração e grava esse total calculado no ato.
+- Com valor maior que zero, grava o total informado no documento, respeitando os saldos utilizados e mantendo o alerta de eventual divergência com os itens.
+- Prorrogação preserva o valor e o período; Renovação segue a regra própria de abertura de período. Esses formulários não oferecem alteração de preço ou total.
+
+Novos atos persistem `ContractAmendment.updatedAmount` como total atualizado e `ContractAmendmentItem.unitPrice` como novo preço unitário. As colunas antigas de variação monetária ficam mantidas apenas para compatibilidade e histórico. Não se aplicam simultaneamente o novo preço e a variação antiga.
 
 Documentos novos não podem anteceder a última alteração ativa registrada. Datas e valores originais, Pedidos e notas anteriores não são reescritos. Registros antigos com tipo textual são preservados como legados; a migração não presume que um texto antigo representava uma renovação real.
 
@@ -133,6 +148,17 @@ A Chave de Acesso aceita até 100 caracteres alfanuméricos, sem exigir exclusiv
 
 Recebimentos continuam na própria nota, parciais ou integrais, sem ultrapassar o saldo e sem data anterior à emissão. Encerrar o contrato não apaga obrigações nem impede recebimentos válidos. Cancelar uma nota com recebimentos continua bloqueado; a exclusão definitiva é uma operação distinta e exige confirmação da perda também desses recebimentos.
 
+## Destaques dos status
+
+Pedidos e notas fiscais usam badges com texto, ícone, borda e fundo:
+
+- Pendente / A receber: amarelo.
+- Parcialmente fornecido / Parcialmente recebida: azul.
+- Fornecido / Recebida: verde.
+- Cancelado / Cancelada: cinza.
+
+O significado continua disponível em texto, sem depender apenas da cor. As regras de cálculo das situações permanecem as mesmas.
+
 ## Garantias
 
 São opcionais e usam as opções:
@@ -163,13 +189,13 @@ Grupos legados com mais de um contrato independente ainda compartilhando itens e
 
 ## Migração, compatibilidade e implantação
 
-Migração nova: `20261123000000_contract_periods_endorsements`.
+Migração nova: `20261123000100_absolute_amendment_prices`, posterior à criação dos períodos e apostilamentos.
 
-Ela adiciona o campo Continuado, os valores de execução separados, os períodos de execução, o tipo estruturado dos aditivos, os preços históricos dos novos Pedidos e as entidades de Apostilamento e seus itens. Não remove registros ou colunas financeiras existentes.
+Ela adiciona o novo preço unitário dos itens de aditivo e o total atualizado absoluto do cabeçalho. Reconstrói os preços dos aditivos ativos em ordem cronológica, considerando apostilamentos intermediários, e preserva as variações originais como histórico. Aditivos cancelados não são reinterpretados: mantêm a referência legada quando não há um novo preço ativo a converter.
 
-Os contratos anteriores ganham o período inicial com seus valores e alterações existentes. Pedidos e notas são vinculados ao período 1, mantendo quantidades, valores, recebimentos, IDs e auditoria. Itens antigos de notas fiscais ficam armazenados somente como histórico de compatibilidade: novas notas não criam essas linhas e a operação não depende delas.
+A migração não altera quantidades históricas, saldos dos períodos, Pedidos, notas ou recebimentos. Cabeçalhos antigos continuam identificados como legados e seguem sua semântica anterior; novos cabeçalhos gravam o total absoluto. As mudanças de base original passam a ocorrer explicitamente na edição do contrato, sem uma correção financeira retroativa automática durante o deploy.
 
-Pedidos anteriores que não tinham preço gravado continuam com snapshot desconhecido. Não se inventa um preço histórico: o limite de valor por Pedido é aplicado quando todos os preços estão disponíveis; o limite financeiro do período e os saldos de recebimento continuam obrigatórios. Cadastros legados sem valor ou tipo devem ser completados antes da execução.
+Continuam válidas as medidas de compatibilidade da migração anterior: itens antigos de NF são apenas históricos, e preços desconhecidos de Pedidos anteriores não são inventados. Cadastros legados sem valor ou tipo precisam ser completados antes da execução.
 
 Em homologação, com as variáveis já documentadas:
 
@@ -187,6 +213,7 @@ A migração e os fluxos são testados somente em PostgreSQL descartável neste 
 ### Verificações desta entrega
 
 - TypeScript, ESLint, Prettier e build Next.js aprovados.
-- **280 testes aprovados:** 161 unitários, 102 de integração com PostgreSQL e 17 de navegador.
-- A migração foi aplicada somente ao PostgreSQL descartável local e a segunda execução não encontrou pendências. Foi usado o engine oficial WASM do Prisma com o adaptador PostgreSQL neste ambiente.
-- Os testes verificam o exemplo de renovação 100 + 10 com sobra de 20, separação de períodos, preços históricos, exclusões e dependências, pesquisa privada/paginada, apostilamento bidirecional e preservação dos campos após erros de validação.
+- **289 testes aprovados:** 162 unitários, 110 de integração com PostgreSQL e 17 de navegador.
+- Migração aplicada somente ao PostgreSQL descartável local; segunda execução sem pendências, usando o engine oficial WASM do Prisma com o adaptador PostgreSQL neste ambiente.
+- Foram verificados o recálculo do original, preços absolutos de aditivos, total automático ou informado, percentuais não persistidos, quantidades inteiras, badges, renovações, exclusões, autenticação e preservação dos dados anteriores.
+- Nenhuma migration no Neon nem publicação de produção foi executada nesta entrega.

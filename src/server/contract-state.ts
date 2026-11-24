@@ -122,15 +122,22 @@ export function executionState(c: ExecutionData) {
         const item = items.find((i) => i.id === row.contractItemId);
         if (!item) throw new BusinessError("Alteração possui item inválido.");
         item.quantity += units(row.quantityDelta, 3);
-        item.price += units(row.unitPriceDelta, 4);
+        item.price =
+          row.unitPrice !== null
+            ? units(row.unitPrice, 4)
+            : item.price + units(row.unitPriceDelta, 4);
         bounded(item.quantity, 3);
         bounded(item.price, 4);
       }
       const delta = units(event.amendment.valueDelta, 2);
-      amount +=
-        !event.amendment.kind || delta !== 0n
-          ? delta
-          : sumItems(items) - before;
+      if (event.amendment.updatedAmount !== null) {
+        const declared = units(event.amendment.updatedAmount, 2);
+        amount = declared === 0n ? sumItems(items) : declared;
+      } else
+        amount +=
+          !event.amendment.kind || delta !== 0n
+            ? delta
+            : sumItems(items) - before;
       if (event.amendment.newEndDate) end = event.amendment.newEndDate;
     } else if (event.endorsement) {
       for (const row of event.endorsement.items) {

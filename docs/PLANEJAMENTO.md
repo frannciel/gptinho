@@ -16,19 +16,17 @@
 4. Exportação privada de dados de proposta em JSON ou Markdown, sem custos internos.
 5. Instruções para extração e elaboração externa da proposta.
 
-## Entrega atual — alterações contratuais e renovação, para validação
+## Entrega atual — padronização de valores e apresentação, para validação
 
-1. Valor original editável com auditoria e valor atualizado de execução separado e persistido.
-2. Campo Continuado e períodos de execução: renovação repõe o quantitativo atualizado completo sem transportar saldo não pedido.
-3. Pesquisa remota paginada de contratação de origem e órgão, com preenchimento automático do órgão e carregamento dos itens da origem.
-4. Nota fiscal simplificada por Pedido, com valor e dados do documento, sem cadastro operacional de itens.
-5. Tipos estruturados de aditivo e regras para Acréscimo, Supressão, Prorrogação, Renovação e Múltiplas Alterações.
-6. Tipos legais de garantia em lista.
-7. Apostilamento com Reajuste/Repactuação, cálculo bidirecional de preço/percentual e aplicação percentual para todos, persistindo só os novos preços.
-8. Exclusões confirmadas e auditadas de Contrato, Pedido, Nota Fiscal, Aditivo e Apostilamento, com alertas de dependentes e proteção de alterações posteriores.
-9. Migração expansiva com preservação de notas, recebimentos, itens antigos e documentos anteriores.
+1. Recálculo do valor atualizado sempre que o original é editado, reaplicando os documentos e preservando os preços e valores históricos dos Pedidos/notas.
+2. Quantidades novas inteiras e apresentação sem casas decimais; preservação de frações legadas sem arredondamento silencioso.
+3. Destaques de status de Pedidos e Notas Fiscais com badge, cor, borda, ícone e texto.
+4. Aditivos registram novos preços unitários absolutos, com Variação para todos (%) apenas como auxílio de preenchimento.
+5. Data do aditivo renomeada para Data de Assinatura.
+6. Cabeçalho Valor Atualizado do Contrato: zero/vazio calcula o total dos itens; valor positivo representa o total absoluto.
+7. Migração compatível com aditivos e apostilamentos anteriores, preservando quantidades e saldos financeiros.
 
-Regras, diagrama, limites e implantação: [CONTRATOS.md](CONTRATOS.md).
+Regras, limites e implantação: [CONTRATOS.md](CONTRATOS.md).
 
 ## Escopo confirmado do MVP
 

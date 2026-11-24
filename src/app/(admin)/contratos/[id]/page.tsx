@@ -19,8 +19,11 @@ import {
   units,
   orderStatus,
   lineValue,
+  quantityText,
+  quantityInput,
 } from "@/lib/contracts";
 import { money } from "@/lib/format";
+import { ContractStatusBadge } from "@/components/contract-status-badge";
 import { PageHeader } from "@/components/page-header";
 import { ButtonContent } from "@/components/button-content";
 import { ContractForm } from "@/components/contract-form";
@@ -52,8 +55,17 @@ function Field({
       <input
         className="field"
         name={name}
-        type={type === "decimal" ? "text" : type}
-        inputMode={type === "decimal" ? "decimal" : undefined}
+        type={
+          type === "quantity" ? "number" : type === "decimal" ? "text" : type
+        }
+        inputMode={
+          type === "quantity"
+            ? "numeric"
+            : type === "decimal"
+              ? "decimal"
+              : undefined
+        }
+        step={type === "quantity" ? "1" : undefined}
         defaultValue={value}
         required={required}
       />
@@ -215,6 +227,20 @@ export default async function Page({
           Cadastro legado com itens compartilhados entre contratos. Revise a
           separação antes de novos lançamentos. Recebimentos de notas existentes
           continuam disponíveis.
+        </p>
+      )}
+      {(c.items.some((i) => units(i.quantity, 3) % 1000n !== 0n) ||
+        c.orders.some((o) =>
+          o.items.some(
+            (i) =>
+              units(i.requestedQuantity, 3) % 1000n !== 0n ||
+              units(i.suppliedQuantity, 3) % 1000n !== 0n,
+          ),
+        )) && (
+        <p role="alert" className="mb-5 rounded-lg bg-amber-50 p-4 text-sm">
+          Há quantidades fracionárias legadas neste contrato. Os valores
+          históricos foram preservados; revise-os antes de novas alterações.
+          Novas quantidades devem ser inteiras.
         </p>
       )}
       <section className="panel mb-6 grid gap-5 p-5 sm:grid-cols-3">
@@ -414,13 +440,13 @@ export default async function Page({
                               .join(" · ")}
                           </span>
                         </td>
-                        <td>{i.quantity.toFixed(3).replace(".", ",")}</td>
-                        <td>{i.effectiveQuantity.replace(".", ",")}</td>
+                        <td>{quantityText(i.quantity)}</td>
+                        <td>{quantityText(i.effectiveQuantity)}</td>
                         <td>{i.unitPrice.toFixed(4).replace(".", ",")}</td>
                         <td>{i.effectivePrice.replace(".", ",")}</td>
-                        <td>{fixed(i.reserved, 3).replace(".", ",")}</td>
-                        <td>{fixed(i.supplied, 3).replace(".", ",")}</td>
-                        <td>{fixed(i.available, 3).replace(".", ",")}</td>
+                        <td>{quantityText(i.reserved)}</td>
+                        <td>{quantityText(i.supplied)}</td>
+                        <td>{quantityText(i.available)}</td>
                       </tr>
                     ))}
                     {!b.items.length && (
@@ -484,9 +510,9 @@ export default async function Page({
                           />
                           <Field
                             name="quantity"
-                            label="Quantidade (até 3 casas)"
-                            type="decimal"
-                            value={item?.quantity.toFixed(3)}
+                            label="Quantidade"
+                            type="quantity"
+                            value={item ? quantityInput(item.quantity) : ""}
                             required
                           />
                           <Field
@@ -607,15 +633,17 @@ export default async function Page({
                           >
                             {i.description}
                           </td>
-                          <td>{fixed(i.available, 3).replace(".", ",")}</td>
+                          <td>{quantityText(i.available)}</td>
                           <td>
                             <input type="hidden" name="itemId" value={i.id} />
                             <input
                               className="field w-36"
                               name={`quantity-${i.id}`}
                               aria-label={`Quantidade item ${i.number}`}
-                              inputMode="decimal"
-                              placeholder="0,000"
+                              type="number"
+                              step="1"
+                              inputMode="numeric"
+                              placeholder="0"
                             />
                           </td>
                         </tr>
@@ -653,7 +681,9 @@ export default async function Page({
                     <h2 className="font-semibold">
                       Pedido {order.reference ?? order.id.slice(-8)}
                     </h2>
-                    <span>{orderStatus(order.cancelled, order.items)}</span>
+                    <ContractStatusBadge
+                      status={orderStatus(order.cancelled, order.items)}
+                    />
                   </div>
                   <p className="text-sm text-slate-500">
                     Período {period?.number ?? 1} · {date(order.orderDate)} ·
@@ -691,11 +721,7 @@ export default async function Page({
                                   )?.number
                                 }
                               </td>
-                              <td>
-                                {row.requestedQuantity
-                                  .toFixed(3)
-                                  .replace(".", ",")}
-                              </td>
+                              <td>{quantityText(row.requestedQuantity)}</td>
                               <td>
                                 <input
                                   type="hidden"
@@ -706,17 +732,20 @@ export default async function Page({
                                   className="field w-36"
                                   name={`supplied-${row.id}`}
                                   aria-label={`Fornecido item ${c.items.find((i) => i.id === row.contractItemId)?.number}`}
-                                  inputMode="decimal"
-                                  defaultValue={row.suppliedQuantity.toFixed(3)}
+                                  type="number"
+                                  step="1"
+                                  inputMode="numeric"
+                                  defaultValue={quantityInput(
+                                    row.suppliedQuantity,
+                                  )}
                                   disabled={order.cancelled}
                                 />
                               </td>
                               <td>
-                                {fixed(
+                                {quantityText(
                                   units(row.requestedQuantity, 3) -
                                     units(row.suppliedQuantity, 3),
-                                  3,
-                                ).replace(".", ",")}
+                                )}
                               </td>
                             </tr>
                           ))}
@@ -789,8 +818,12 @@ export default async function Page({
                             <input
                               className="field"
                               name={`quantity-${row.contractItemId}`}
-                              inputMode="decimal"
-                              defaultValue={row.requestedQuantity.toFixed(3)}
+                              type="number"
+                              step="1"
+                              inputMode="numeric"
+                              defaultValue={quantityInput(
+                                row.requestedQuantity,
+                              )}
                               required
                             />
                           </label>
@@ -892,15 +925,17 @@ export default async function Page({
                 >
                   <div className="flex flex-wrap justify-between gap-2">
                     <h2 className="font-semibold">Nota fiscal {n.reference}</h2>
-                    <span>
-                      {n.cancelled
-                        ? "Cancelada"
-                        : pending === 0n
-                          ? "Recebida"
-                          : received > 0n
-                            ? "Parcialmente recebida"
-                            : "A receber"}
-                    </span>
+                    <ContractStatusBadge
+                      status={
+                        n.cancelled
+                          ? "Cancelada"
+                          : pending === 0n
+                            ? "Recebida"
+                            : received > 0n
+                              ? "Parcialmente recebida"
+                              : "A receber"
+                      }
+                    />
                   </div>
                   <p className="text-sm text-slate-500">
                     Emissão: {date(n.issueDate)} · Pedido:{" "}
@@ -1131,6 +1166,12 @@ export default async function Page({
                       ? ` · Nova vigência até ${date(a.newEndDate)}`
                       : ""}
                   </p>
+                  {a.updatedAmount !== null && (
+                    <p className="text-sm">
+                      Valor Atualizado do Contrato:{" "}
+                      {money(a.updatedAmount.toFixed(2))}
+                    </p>
+                  )}
                   {a.kind === "RENEWAL" && (
                     <p className="text-sm">
                       Novo período de execução com o quantitativo atualizado
@@ -1141,9 +1182,11 @@ export default async function Page({
                     <p key={row.id} className="text-sm">
                       Item{" "}
                       {c.items.find((i) => i.id === row.contractItemId)?.number}
-                      : quantidade{" "}
-                      {row.quantityDelta.toFixed(3).replace(".", ",")} · preço{" "}
-                      {row.unitPriceDelta.toFixed(4).replace(".", ",")}
+                      : variação da quantidade {quantityText(row.quantityDelta)}{" "}
+                      ·{" "}
+                      {row.unitPrice !== null
+                        ? `novo preço unitário ${row.unitPrice.toFixed(4).replace(".", ",")}`
+                        : `variação legada de preço ${row.unitPriceDelta.toFixed(4).replace(".", ",")}`}
                     </p>
                   ))}
                   {a.documentUrl && (

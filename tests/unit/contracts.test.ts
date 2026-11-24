@@ -9,6 +9,9 @@ import {
   lineValue,
   reconcileContractValue,
   invoiceSchema,
+  integerQuantity,
+  quantityText,
+  quantityInput,
   priceFromPercent,
   percentFromPrice,
 } from "@/lib/contracts";
@@ -108,5 +111,14 @@ describe("Contratos: precisão, datas e modalidades", () => {
     expect(percentFromPrice("0.0000", "1.0000")).toBeNull();
     expect(() => priceFromPercent("10.0000", "-100.0001")).toThrow();
     expect(priceFromPercent("0.0001", "50")).toBe("0.0002");
+  });
+  it("quantidades inteiras não mostram casas e frações legadas não são truncadas", () => {
+    expect(quantityText("100.000")).toBe("100");
+    expect(quantityText(110000n)).toBe("110");
+    expect(quantityInput("100.000")).toBe("100");
+    expect(quantityText("1.500")).toBe("1,5");
+    expect(integerQuantity(true).safeParse("1.5").success).toBe(false);
+    expect(integerQuantity(true).parse("100.000")).toBe("100.000");
+    expect(integerQuantity(false, true).parse("-10")).toBe("-10.000");
   });
 });

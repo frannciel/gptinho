@@ -10,6 +10,8 @@ import {
   instrumentTypes,
   reconcileContractValue,
   decimal,
+  quantityInput,
+  integerQuantity,
 } from "@/lib/contracts";
 import { ContractSearch, type ContractChoice } from "./contract-search";
 import { money } from "@/lib/format";
@@ -232,7 +234,7 @@ export function ContractForm({
         : (source?.items ?? [])
             .filter((i) => data.get(`include-${i.id}`) === "on")
             .map((i) => ({
-              quantity: decimal(3, true).parse(
+              quantity: integerQuantity(true).parse(
                 String(data.get(`quantity-${i.id}`) ?? ""),
               ),
               unitPrice: i.unitPrice,
@@ -366,8 +368,10 @@ export function ContractForm({
                       className="field w-32"
                       aria-label={`Quantidade item ${i.number}`}
                       name={`quantity-${i.id}`}
-                      inputMode="decimal"
-                      defaultValue={i.quantity}
+                      type="number"
+                      step="1"
+                      inputMode="numeric"
+                      defaultValue={quantityInput(i.quantity)}
                     />
                   </label>
                 ))}

@@ -164,7 +164,7 @@ test("Contrato: busca, edição do original, NF sem itens, garantia legal e apos
   await form.getByLabel("Número do item").fill("1");
   await form.getByLabel("Unidade").fill("UN");
   await form.getByLabel("Descrição").fill("Produto continuado E2E");
-  await form.getByLabel("Quantidade (até 3 casas)").fill("100");
+  await form.getByLabel("Quantidade", { exact: false }).fill("100");
   await form.getByLabel("Preço unitário contratado").fill("10");
   await save(page, form);
   await expect(
@@ -184,6 +184,12 @@ test("Contrato: busca, edição do original, NF sem itens, garantia legal e apos
   await save(page, form);
   await expect(
     page.getByRole("heading", { name: "Pedido P-BASE" }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("article")
+      .getByRole("status")
+      .filter({ hasText: "Pendente" }),
   ).toBeVisible();
   expect(
     (await db.contract.findUniqueOrThrow({ where: { id: termId } })).status,
@@ -208,7 +214,7 @@ test("Contrato: busca, edição do original, NF sem itens, garantia legal e apos
   await form.getByLabel("Valor recebido").fill("500");
   await save(page, form);
   await expect(
-    page.getByText("Parcialmente recebida", { exact: true }),
+    page.getByRole("status").filter({ hasText: "Parcialmente recebida" }),
   ).toBeVisible();
   await page.getByRole("link", { name: "Garantias", exact: true }).click();
   form = await box(page, "Nova garantia");
@@ -224,7 +230,7 @@ test("Contrato: busca, edição do original, NF sem itens, garantia legal e apos
     where: { id: termId },
   });
   expect(corrected.amount!.toFixed(2)).toBe("9999.00");
-  expect(corrected.currentAmount!.toFixed(2)).toBe("1000.00");
+  expect(corrected.currentAmount!.toFixed(2)).toBe("9999.00");
   await page.getByRole("link", { name: "Apostilamento", exact: true }).click();
   form = await box(page, "Novo apostilamento");
   await form.getByLabel("Número", { exact: false }).fill("AP-01");
@@ -248,7 +254,7 @@ test("Contrato: busca, edição do original, NF sem itens, garantia legal e apos
     (
       await db.contract.findUniqueOrThrow({ where: { id: termId } })
     ).currentAmount!.toFixed(2),
-  ).toBe("1100.00");
+  ).toBe("10099.00");
   expect(
     (
       await db.supplyOrderItem.findFirstOrThrow({ where: { caseId } })
@@ -271,7 +277,7 @@ test("Contrato: busca, edição do original, NF sem itens, garantia legal e apos
     (
       await db.contract.findUniqueOrThrow({ where: { id: termId } })
     ).currentAmount!.toFixed(2),
-  ).toBe("1000.00");
+  ).toBe("9999.00");
 });
 test("Renovação: 100 + 10 com saldo 20 inicia novo período com 110 disponíveis", async ({
   page,
@@ -280,19 +286,25 @@ test("Renovação: 100 + 10 com saldo 20 inicia novo período com 110 disponíve
   await page.goto(`/contratos/${termId}?tab=aditivos`);
   let form = await box(page, "Novo aditivo");
   await form.getByLabel("Número do aditivo").fill("AD-BASE");
-  await form.getByLabel("Data do aditivo").fill("2026-11-05");
+  await form.getByLabel("Data de Assinatura").fill("2026-11-05");
   await form.getByLabel("Tipo de alteração").selectOption("ADDITION");
   await form.getByLabel("Variação de quantidade item 1").fill("10");
+  await form.getByLabel("Variação para todos (%)").fill("10");
+  await form.getByRole("button", { name: "Aplicar a todos" }).click();
+  await expect(form.getByLabel("Novo valor item 1")).toHaveValue("11.0000");
+  await expect(form.getByLabel("Valor Atualizado do Contrato")).toHaveValue(
+    "0,00",
+  );
   await save(page, form);
   await expect(
     page.getByRole("heading", { name: "Aditivo AD-BASE" }),
   ).toBeVisible();
   let row = await general(page);
-  await expect(row.getByRole("cell").last()).toHaveText("20,000");
+  await expect(row.getByRole("cell").last()).toHaveText("20");
   await page.getByRole("link", { name: "Aditivos", exact: true }).click();
   form = await box(page, "Novo aditivo");
   await form.getByLabel("Número do aditivo").fill("REN-01");
-  await form.getByLabel("Data do aditivo").fill("2027-10-31");
+  await form.getByLabel("Data de Assinatura").fill("2027-10-31");
   await form.getByLabel("Tipo de alteração").selectOption("RENEWAL");
   await expect(form.getByLabel("Variação de quantidade item 1")).toHaveCount(0);
   await form.getByLabel("Nova data final da vigência").fill("2028-10-31");
@@ -301,8 +313,8 @@ test("Renovação: 100 + 10 com saldo 20 inicia novo período com 110 disponíve
     page.getByRole("heading", { name: "Aditivo REN-01" }),
   ).toBeVisible();
   row = await general(page);
-  await expect(row.getByRole("cell").last()).toHaveText("110,000");
-  await expect(row.getByRole("cell").nth(5)).toHaveText("10,0000");
+  await expect(row.getByRole("cell").last()).toHaveText("110");
+  await expect(row.getByRole("cell").nth(5)).toHaveText("11,0000");
   expect(await db.contractPeriod.count({ where: { caseId } })).toBe(2);
   await page.getByRole("link", { name: "Aditivos", exact: true }).click();
   const original = page.getByRole("article").filter({
@@ -323,7 +335,7 @@ test("Renovação: 100 + 10 com saldo 20 inicia novo período com 110 disponíve
     page.getByRole("heading", { name: "Pedido P-NOVO" }),
   ).toBeVisible();
   row = await general(page);
-  await expect(row.getByRole("cell").last()).toHaveText("0,000");
+  await expect(row.getByRole("cell").last()).toHaveText("0");
 });
 test("Exclusões irreversíveis de NF, Pedido, renovação, aditivo e contrato preservam o escopo", async ({
   page,
@@ -336,7 +348,7 @@ test("Exclusões irreversíveis de NF, Pedido, renovação, aditivo e contrato p
     .selectOption({ label: "P-NOVO · período 2" });
   await form.getByLabel("Número da nota fiscal").fill("NF-NOVA");
   await form.getByLabel("Data de emissão", { exact: false }).fill("2027-11-02");
-  await form.getByLabel("Valor da nota fiscal").fill("1100");
+  await form.getByLabel("Valor da nota fiscal").fill("1210");
   await save(page, form);
   await expect(
     page.getByRole("heading", { name: "Nota fiscal NF-NOVA" }),
@@ -368,7 +380,7 @@ test("Exclusões irreversíveis de NF, Pedido, renovação, aditivo e contrato p
     .selectOption({ label: "P-NOVO · período 2" });
   await form.getByLabel("Número da nota fiscal").fill("NF-NOVA2");
   await form.getByLabel("Data de emissão", { exact: false }).fill("2027-11-02");
-  await form.getByLabel("Valor da nota fiscal").fill("1100");
+  await form.getByLabel("Valor da nota fiscal").fill("1210");
   await save(page, form);
   await expect(
     page.getByRole("heading", { name: "Nota fiscal NF-NOVA2" }),
@@ -390,7 +402,7 @@ test("Exclusões irreversíveis de NF, Pedido, renovação, aditivo e contrato p
   await expect(article).toHaveCount(0);
   expect(await db.salesInvoice.count({ where: { caseId } })).toBe(1);
   let row = await general(page);
-  await expect(row.getByRole("cell").last()).toHaveText("110,000");
+  await expect(row.getByRole("cell").last()).toHaveText("110");
   await page.getByRole("link", { name: "Aditivos", exact: true }).click();
   article = page.getByRole("article").filter({
     has: page.getByRole("heading", { name: "Aditivo REN-01", exact: true }),
@@ -401,7 +413,7 @@ test("Exclusões irreversíveis de NF, Pedido, renovação, aditivo e contrato p
   );
   await expect(article).toHaveCount(0);
   row = await general(page);
-  await expect(row.getByRole("cell").last()).toHaveText("20,000");
+  await expect(row.getByRole("cell").last()).toHaveText("20");
   await page.getByRole("link", { name: "Aditivos", exact: true }).click();
   article = page.getByRole("article").filter({
     has: page.getByRole("heading", { name: "Aditivo AD-BASE", exact: true }),
@@ -412,7 +424,7 @@ test("Exclusões irreversíveis de NF, Pedido, renovação, aditivo e contrato p
   );
   await expect(article).toHaveCount(0);
   row = await general(page);
-  await expect(row.getByRole("cell").last()).toHaveText("10,000");
+  await expect(row.getByRole("cell").last()).toHaveText("10");
   await deleteConfirm(
     page,
     page.getByRole("button", { name: "Excluir contrato" }),
@@ -473,7 +485,7 @@ test("Contratação de origem é pesquisada e preenche órgão e itens automatic
   await expect(
     page.getByRole("combobox", { name: "Órgão público" }),
   ).toHaveValue(agency);
-  await expect(page.getByLabel("Quantidade item 1")).toHaveValue("4.000");
+  await expect(page.getByLabel("Quantidade item 1")).toHaveValue("4");
   await expect(page.getByLabel("Quantidade item 2")).toHaveCount(0);
   await page.getByLabel("Número do empenho substitutivo").fill(`NE-${suffix}`);
   await page
