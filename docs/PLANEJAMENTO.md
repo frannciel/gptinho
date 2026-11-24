@@ -53,3 +53,12 @@ Esta entrega não inclui emissão fiscal, XML/NF-e, gestão documental, execuç�
 4. Corrigir os apontamentos dessa validação antes de ampliar o sistema.
 5. Próxima etapa: definir o escopo financeiro com o usuário (custos realizados, despesas/contas a pagar, estornos, conciliação e relatórios). A parte financeira foi expressamente adiada nesta entrega.
 6. Após aprovação, realizar o procedimento autorizado de publicação. Esta implementação não publica produção nem altera o Neon automaticamente.
+
+### Ajustes solicitados — Contatos, Órgãos e Calendário
+
+- Múltiplos telefones por contato com indicação e link individual de WhatsApp.
+- Observações e perfil no LinkedIn opcionais.
+- Preservação dos telefones adicionais ao editar organizações.
+- Bloco de endereço dos órgãos públicos no mesmo padrão dos fornecedores.
+- Botões Mensal/Lista separados dos filtros do calendário.
+- Nova migration de telefones/perfil; financeiro permanece para a próxima etapa.

@@ -1,6 +1,6 @@
 import type { PrismaClient, Prisma } from "@prisma/client";
 import { z } from "zod";
-import { contactSchema } from "@/lib/agenda";
+import { contactSchema, updatePrimaryPhone } from "@/lib/agenda";
 import { idSchema } from "@/lib/validation";
 import { BusinessError } from "@/lib/errors";
 export const contactFilters = z.object({
@@ -18,9 +18,20 @@ export async function listContacts(db: PrismaClient, input: unknown) {
       : {}),
     ...(q
       ? {
-          OR: ["name", "email", "phone", "position"].map((field) => ({
-            [field]: { contains: q, mode: "insensitive" },
-          })),
+          OR: [
+            ...["name", "email", "phone", "position"].map((field) => ({
+              [field]: { contains: q, mode: "insensitive" as const },
+            })),
+            ...(q.replace(/\D/g, "").length >= 8
+              ? [
+                  {
+                    phones: {
+                      array_contains: [{ number: q.replace(/[^\d+]/g, "") }],
+                    },
+                  },
+                ]
+              : []),
+          ],
         }
       : {}),
   };
@@ -43,7 +54,8 @@ export async function saveContact(
   id?: string,
   version?: number,
 ) {
-  const data = contactSchema.parse(input);
+  const parsed = contactSchema.parse(input);
+  const { phones, ...data } = parsed;
   if (id) {
     idSchema.parse(id);
     z.number().int().positive().parse(version);
@@ -52,6 +64,13 @@ export async function saveContact(
     // Same organization lock as its editor; versions invalidate stale embedded forms.
     const before = id ? await tx.contact.findUnique({ where: { id } }) : null;
     if (id && !before) throw new BusinessError("Contato não encontrado.");
+    const numbers =
+      phones ?? updatePrimaryPhone(before ?? { phone: null }, data.phone);
+    const values = {
+      ...data,
+      phone: numbers[0]?.number ?? null,
+      phones: numbers,
+    };
     const organizations = [
       ...new Set(
         [before?.organizationId, data.organizationId].filter(
@@ -69,7 +88,7 @@ export async function saveContact(
     if (id) {
       const changed = await tx.contact.updateMany({
         where: { id, version },
-        data: { ...data, version: { increment: 1 } },
+        data: { ...values, version: { increment: 1 } },
       });
       if (!changed.count)
         throw new BusinessError(
@@ -78,7 +97,7 @@ export async function saveContact(
     }
     const result = id
       ? await tx.contact.findUniqueOrThrow({ where: { id } })
-      : await tx.contact.create({ data });
+      : await tx.contact.create({ data: values });
     await tx.organization.updateMany({
       where: { id: { in: organizations } },
       data: { version: { increment: 1 } },

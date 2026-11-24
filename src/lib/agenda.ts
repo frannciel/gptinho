@@ -21,9 +21,93 @@ export const eventTypes = {
 const nullableId = z
   .union([idSchema, z.literal("")])
   .transform((v) => v || null);
+export const contactTelephoneSchema = z
+  .object({
+    number: organizationSchema.shape.contacts.element.shape.phone
+      .refine((v) => !!v, "Informe o telefone.")
+      .transform((v) => v!),
+    whatsapp: z.boolean(),
+  })
+  .strict();
+export type ContactTelephone = z.infer<typeof contactTelephoneSchema>;
+export function contactPhones(contact: {
+  phone: string | null;
+  phones?: unknown;
+}): ContactTelephone[] {
+  const parsed = z.array(contactTelephoneSchema).safeParse(contact.phones);
+  return parsed.success && parsed.data.length
+    ? parsed.data
+    : contact.phone
+      ? [{ number: contact.phone, whatsapp: false }]
+      : [];
+}
+export function updatePrimaryPhone(
+  contact: { phone: string | null; phones?: unknown },
+  number: string | null,
+): ContactTelephone[] {
+  const phones = contactPhones(contact);
+  if (!number) return phones.slice(1);
+  return [
+    {
+      number,
+      whatsapp: phones[0]?.number === number ? phones[0].whatsapp : false,
+    },
+    ...phones.slice(1).filter((p) => p.number !== number),
+  ];
+}
+export function whatsappUrl(number: string) {
+  let digits = number.replace(/\D/g, "");
+  if (!number.startsWith("+") && (digits.length === 10 || digits.length === 11))
+    digits = `55${digits}`;
+  return `https://wa.me/${digits}`;
+}
 export const contactSchema = organizationSchema.shape.contacts.element
   .omit({ id: true })
-  .extend({ organizationId: nullableId });
+  .extend({
+    organizationId: nullableId,
+    phones: z.array(contactTelephoneSchema).max(20).optional(),
+    notes: z
+      .string()
+      .trim()
+      .max(5000)
+      .transform((v) => v || null)
+      .optional(),
+    linkedInUrl: z
+      .string()
+      .trim()
+      .max(500)
+      .refine((v) => {
+        if (!v) return true;
+        try {
+          const url = new URL(v);
+          return (
+            url.protocol === "https:" &&
+            !url.username &&
+            !url.password &&
+            (url.hostname === "linkedin.com" ||
+              url.hostname.endsWith(".linkedin.com")) &&
+            /^\/in\/[^/]+/.test(url.pathname)
+          );
+        } catch {
+          return false;
+        }
+      }, "Informe um perfil válido do LinkedIn (https://www.linkedin.com/in/...).")
+      .transform((v) => v || null)
+      .optional(),
+  })
+  .superRefine((data, ctx) => {
+    const seen = new Set<string>();
+    data.phones?.forEach((p, i) => {
+      const key = p.number.replace(/\D/g, "");
+      if (seen.has(key))
+        ctx.addIssue({
+          code: "custom",
+          path: ["phones", i, "number"],
+          message: "Telefone repetido neste contato.",
+        });
+      seen.add(key);
+    });
+  });
 export const dateOnly = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Informe uma data válida.")

@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   brazilDay,
   contactSchema,
+  contactPhones,
+  updatePrimaryPhone,
+  whatsappUrl,
   taskSchema,
   monthRange,
   eventKey,
@@ -80,4 +83,54 @@ describe("Contatos e agenda: validação e datas", () => {
       eventKey("TASK", "id", new Date("2026-12-01Z")),
     );
   });
+});
+
+it("valida múltiplos telefones, duplicados e perfis seguros do LinkedIn", () => {
+  expect(
+    contactSchema.parse({
+      ...contact,
+      phones: [{ number: "(61) 99999-1234", whatsapp: true }],
+      notes: " Nota ",
+      linkedInUrl: "https://www.linkedin.com/in/pessoa",
+    }).phones?.[0],
+  ).toEqual({ number: "61999991234", whatsapp: true });
+  expect(
+    contactSchema.safeParse({
+      ...contact,
+      phones: [
+        { number: "61999991234", whatsapp: false },
+        { number: "(61) 99999-1234", whatsapp: true },
+      ],
+    }).success,
+  ).toBe(false);
+  for (const linkedInUrl of [
+    "javascript:alert(1)",
+    "https://linkedin.com.evil.org/in/pessoa",
+    "https://user:pass@linkedin.com/in/pessoa",
+    "https://example.org/in/pessoa",
+  ])
+    expect(contactSchema.safeParse({ ...contact, linkedInUrl }).success).toBe(
+      false,
+    );
+});
+
+it("links de WhatsApp usam código do país e preservam números internacionais", () => {
+  expect(whatsappUrl("(61) 99999-1234")).toBe("https://wa.me/5561999991234");
+  expect(whatsappUrl("+1 202 555 0123")).toBe("https://wa.me/12025550123");
+});
+it("edição do telefone principal preserva adicionais e não presume WhatsApp em outro número", () => {
+  const c = {
+    phone: "61999991234",
+    phones: [
+      { number: "61999991234", whatsapp: true },
+      { number: "6133334444", whatsapp: true },
+    ],
+  };
+  expect(updatePrimaryPhone(c, "61988881234")).toEqual([
+    { number: "61988881234", whatsapp: false },
+    { number: "6133334444", whatsapp: true },
+  ]);
+  expect(contactPhones({ phone: "6133334444", phones: [] })).toEqual([
+    { number: "6133334444", whatsapp: false },
+  ]);
 });

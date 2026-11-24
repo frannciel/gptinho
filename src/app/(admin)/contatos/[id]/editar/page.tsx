@@ -1,3 +1,4 @@
+import { contactPhones } from "@/lib/agenda";
 import { notFound } from "next/navigation";
 import { requireAdminPage } from "@/lib/authorization";
 import { idSchema } from "@/lib/validation";
@@ -32,6 +33,9 @@ export default async function Page({
           position: c.position ?? "",
           email: c.email ?? "",
           phone: c.phone ?? "",
+          phones: contactPhones(c),
+          notes: c.notes ?? "",
+          linkedInUrl: c.linkedInUrl ?? "",
           organization: c.organization
             ? { id: c.organization.id, label: c.organization.legalName }
             : null,
