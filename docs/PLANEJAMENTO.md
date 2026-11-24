@@ -16,7 +16,7 @@
 4. Exportação privada de dados de proposta em JSON ou Markdown, sem custos internos.
 5. Instruções para extração e elaboração externa da proposta.
 
-## Entrega atual — padronização de valores e apresentação, para validação
+## Padronização de valores e apresentação — entrega anterior
 
 1. Recálculo do valor atualizado sempre que o original é editado, reaplicando os documentos e preservando os preços e valores históricos dos Pedidos/notas.
 2. Quantidades novas inteiras e apresentação sem casas decimais; preservação de frações legadas sem arredondamento silencioso.
@@ -28,6 +28,17 @@
 
 Regras, limites e implantação: [CONTRATOS.md](CONTRATOS.md).
 
+## Entrega atual — Contatos, Calendário e tarefas
+
+1. Tela independente de Contatos, com vínculo opcional à organização, pesquisa, filtros e exclusão protegida.
+2. Preservação dos IDs e contatos desvinculados, mantendo as relações com tarefas.
+3. Tarefas e compromissos com responsáveis, prioridade, prazo e vínculos opcionais.
+4. Calendário mensal/lista com sessões, propostas, Pedidos, vigências efetivas, garantias e tarefas.
+5. Alertas internos individuais e resumo de prazos no dashboard.
+6. Migration sem apagar pessoas existentes, índices, auditoria, controle de versão e testes.
+
+Detalhes e implantação: [CONTATOS_AGENDA.md](CONTATOS_AGENDA.md). Aguardando validação do usuário em homologação; nenhuma publicação em produção faz parte desta implementação.
+
 ## Escopo confirmado do MVP
 
 **Não haverá gestão de cotações no sistema.** O agente de IA não será conectado ao ERP. Toda comunicação usa arquivos manipulados pelo usuário. A proposta comercial é elaborada externamente a partir dos dados exportados.
@@ -36,9 +47,9 @@ Esta entrega não inclui emissão fiscal, XML/NF-e, gestão documental, execuç�
 
 ## Ordem dos próximos passos
 
-1. Aplicar a nova migration em homologação e validar os valores original/atualizado, a renovação continuada, os apostilamentos, as buscas, a nota simples por Pedido e as exclusões com documentos reais em homologação.
+1. Aplicar a migration de Contatos/Agenda em homologação e validar contatos independentes, tarefas, prazos, alertas e alterações de vigência.
 2. Revisar cadastros legados indicados como incompletos; conferir origem e valores antes de iniciar execução.
 3. Concluir a validação dos arquivos de importação e do modelo de proposta com dados reais.
 4. Corrigir os apontamentos dessa validação antes de ampliar o sistema.
-5. Definir com o usuário eventual próxima etapa financeira (despesas/contas a pagar, estornos, conciliação) e relatórios; não foram implementados por antecipação.
+5. Próxima etapa: definir o escopo financeiro com o usuário (custos realizados, despesas/contas a pagar, estornos, conciliação e relatórios). A parte financeira foi expressamente adiada nesta entrega.
 6. Após aprovação, realizar o procedimento autorizado de publicação. Esta implementação não publica produção nem altera o Neon automaticamente.

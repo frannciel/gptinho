@@ -14,6 +14,7 @@ function failure(error: unknown): ActionResult {
     : actionError(error);
 }
 function refresh(id: string) {
+  revalidatePath("/calendario");
   for (const path of [
     "/dashboard",
     "/contratacoes",

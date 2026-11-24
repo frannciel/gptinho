@@ -256,13 +256,14 @@ export function OrganizationForm({
           <div>
             <h2 className="font-semibold">Pessoas de contato</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Adicione os responsáveis pelo relacionamento.
+              Adicione os responsáveis pelo relacionamento. Remover um contato
+              desta lista apenas o desvincula; ele permanece na tela Contatos.
             </p>
           </div>
           <button
             type="button"
             className="btn-secondary"
-            disabled={values.contacts.length >= 20}
+            disabled={values.contacts.length >= 1000}
             onClick={() =>
               set("contacts", [
                 ...values.contacts,

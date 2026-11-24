@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AgendaSummary } from "@/components/agenda-summary";
 import {
   Landmark,
   Truck,
@@ -129,6 +130,7 @@ export default async function Dashboard() {
           ),
         )}
       </div>
+      <AgendaSummary actorId={user.id} />
       <section className="mt-7">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>

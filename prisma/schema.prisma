@@ -17,15 +17,17 @@ enum OrganizationRole {
 }
 
 model User {
-  id             String     @id @default(cuid())
+  id             String      @id @default(cuid())
   name           String
-  email          String     @unique
+  email          String      @unique
   passwordHash   String
-  role           Role       @default(USER)
-  active         Boolean    @default(true)
-  sessionVersion Int        @default(0)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  role           Role        @default(USER)
+  active         Boolean     @default(true)
+  sessionVersion Int         @default(0)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  tasks          Task[]
+  eventReads     EventRead[]
   auditLogs      AuditLog[]
 }
 
@@ -56,21 +58,27 @@ model Organization {
   catalogMemberships CatalogSupplier[]
   catalogProducts    CatalogProduct[]   @relation("CatalogSupplier")
   suppliedItems      OpportunityItem[]  @relation("ItemSupplier")
+  tasks              Task[]
 
   @@index([legalName])
   @@index([roles], type: Gin)
 }
 
 model Contact {
-  id             String       @id @default(cuid())
-  organizationId String
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  version        Int           @default(1)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  tasks          Task[]
   name           String
   position       String?
-  email          String?      @unique
+  email          String?       @unique
   phone          String?
 
   @@index([organizationId])
+  @@index([createdAt, id])
 }
 
 model CompanySettings {
@@ -171,6 +179,7 @@ model Opportunity {
   contractCases        ContractCase[]
   contracts            Contract[]
   items                OpportunityItem[]
+  tasks                Task[]
 
   @@index([organizationId, processNumber])
   @@index([archived, legacyStatus, proposalDeadline], map: "Opportunity_archived_status_proposalDeadline_idx")
@@ -315,10 +324,12 @@ model Contract {
   periods              ContractPeriod[]
   endorsements         ContractEndorsement[]
   amendments           ContractAmendment[]
+  tasks                Task[]
 
   @@unique([id, caseId])
   @@unique([organizationId, instrumentType, reference])
   @@index([caseId])
+  @@index([validUntil])
 }
 
 model ContractItem {
@@ -368,6 +379,7 @@ model SupplyOrder {
 
   @@unique([id, caseId])
   @@index([caseId])
+  @@index([deadline])
 }
 
 model SupplyOrderItem {
@@ -459,6 +471,7 @@ model ContractGuarantee {
   updatedAt    DateTime     @updatedAt
 
   @@index([caseId])
+  @@index([validUntil])
 }
 
 model ContractAmendment {
@@ -483,6 +496,7 @@ model ContractAmendment {
 
   @@unique([instrumentId, reference])
   @@unique([id, caseId])
+  @@index([newEndDate])
 }
 
 model ContractAmendmentItem {
@@ -531,6 +545,7 @@ model ContractPeriod {
   @@unique([id, caseId])
   @@unique([caseId, number])
   @@unique([renewalId, caseId])
+  @@index([endsAt])
 }
 
 model ContractEndorsement {
@@ -561,4 +576,55 @@ model ContractEndorsementItem {
   unitPrice      Decimal             @db.Decimal(18, 4)
 
   @@unique([endorsementId, contractItemId])
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum TaskPriority {
+  LOW
+  NORMAL
+  HIGH
+}
+
+model Task {
+  id             String        @id @default(cuid())
+  title          String
+  description    String?
+  assigneeId     String?
+  assignee       User?         @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+  dueDate        DateTime      @db.Date
+  status         TaskStatus    @default(PENDING)
+  priority       TaskPriority  @default(NORMAL)
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  contactId      String?
+  contact        Contact?      @relation(fields: [contactId], references: [id], onDelete: Restrict)
+  opportunityId  String?
+  opportunity    Opportunity?  @relation(fields: [opportunityId], references: [id], onDelete: Restrict)
+  contractId     String?
+  contract       Contract?     @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  version        Int           @default(1)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([dueDate, status])
+  @@index([organizationId])
+  @@index([contactId])
+  @@index([opportunityId])
+  @@index([contractId])
+  @@index([assigneeId])
+}
+
+model EventRead {
+  actorId  String
+  actor    User     @relation(fields: [actorId], references: [id], onDelete: Cascade)
+  eventKey String
+  readAt   DateTime @default(now())
+
+  @@id([actorId, eventKey])
 }

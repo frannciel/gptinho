@@ -172,6 +172,7 @@ export async function contractAction(
       ...siblings.map((i) => `/contratos/${i.id}`),
     ])
       revalidatePath(path);
+    revalidatePath("/calendario");
     return {
       ok: true,
       message: "Registro salvo com sucesso.",

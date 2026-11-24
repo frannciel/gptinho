@@ -11,7 +11,8 @@ export function ContractSearch({
   required = false,
 }: {
   label: string;
-  kind: "agency" | "opportunity";
+  kind:
+    "agency" | "opportunity" | "organization" | "contact" | "contract" | "user";
   selected: ContractChoice | null;
   onSelect: (choice: ContractChoice | null) => void;
   disabled?: boolean;
@@ -45,7 +46,7 @@ export function ContractSearch({
       setError("");
       try {
         const response = await fetch(
-          `/api/admin/contratos/busca?${new URLSearchParams({ kind, q: query, page: String(page) })}`,
+          `/api/admin/${kind === "agency" || kind === "opportunity" ? "contratos" : "agenda"}/busca?${new URLSearchParams({ kind, q: query, page: String(page) })}`,
           { cache: "no-store", signal: controller.signal },
         );
         if (!response.ok)
@@ -100,7 +101,7 @@ export function ContractSearch({
         />
         <input
           id={id}
-          name={kind === "agency" ? "organizationSearch" : "sourceSearch"}
+          name={`${kind}Search`}
           role="combobox"
           aria-expanded={open && !disabled}
           aria-controls={`${id}-list`}
@@ -112,9 +113,13 @@ export function ContractSearch({
           disabled={disabled}
           required={required && !selected}
           placeholder={
-            kind === "agency"
+            kind === "agency" || kind === "organization"
               ? "Pesquise por nome, sigla ou CNPJ…"
-              : "Pesquise por identificação, objeto ou órgão…"
+              : kind === "contact"
+                ? "Pesquise por nome ou e-mail…"
+                : kind === "user"
+                  ? "Pesquise pelo nome…"
+                  : "Pesquise por identificação ou órgão…"
           }
           value={open ? query : (selected?.label ?? query)}
           onFocus={() => {

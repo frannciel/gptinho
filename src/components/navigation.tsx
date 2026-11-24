@@ -2,6 +2,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  CalendarDays,
+  Users,
+  ListTodo,
   LayoutDashboard,
   Landmark,
   Truck,
@@ -18,6 +21,9 @@ const links = [
   { href: "/contratos", label: "Contratos", icon: FileText },
   { href: "/orgaos", label: "Órgãos públicos", icon: Landmark },
   { href: "/fornecedores", label: "Fornecedores", icon: Truck },
+  { href: "/contatos", label: "Contatos", icon: Users },
+  { href: "/calendario", label: "Calendário", icon: CalendarDays },
+  { href: "/tarefas", label: "Tarefas", icon: ListTodo },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
 ];
 export function Navigation({ mobile = false }: { mobile?: boolean }) {
@@ -47,7 +53,7 @@ export function Navigation({ mobile = false }: { mobile?: boolean }) {
 }
 export function Sidebar() {
   return (
-    <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 flex-col bg-[var(--sidebar)] px-5 py-8 lg:flex">
+    <aside className="fixed inset-y-0 left-0 z-20 hidden w-64 overflow-y-auto flex-col bg-[var(--sidebar)] px-5 py-8 lg:flex">
       <div className="px-3">
         <Brand light />
       </div>

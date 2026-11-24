@@ -23,7 +23,7 @@ import {
   validateExecution,
   changeEvents,
 } from "./contract-state";
-const caseInclude = {
+export const caseInclude = {
   periods: { orderBy: { number: "asc" as const } },
   endorsements: {
     include: { items: true },
