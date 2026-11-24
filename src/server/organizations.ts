@@ -90,11 +90,37 @@ export async function saveOrganization(
         throw new BusinessError(
           "Este cadastro foi alterado por outro usuário. Atualize a página antes de salvar.",
         );
-      await tx.contact.deleteMany({ where: { organizationId: id } });
-      if (contacts.length)
-        await tx.contact.createMany({
-          data: contacts.map((contact) => ({ ...contact, organizationId: id })),
-        });
+      // Preserve contact IDs and task links. Removing a row here unlinks the person.
+      const editedContacts = contacts.map((c) => ({
+        ...c,
+        id:
+          c.id ??
+          (c.email
+            ? before?.contacts.find((old) => old.email === c.email)?.id
+            : undefined),
+      }));
+      const keep = editedContacts.flatMap((c) => (c.id ? [c.id] : []));
+      if (new Set(keep).size !== keep.length)
+        throw new BusinessError("Contato repetido no cadastro.");
+      if (
+        keep.some(
+          (contactId) => !before?.contacts.some((c) => c.id === contactId),
+        )
+      )
+        throw new BusinessError("Um contato foi alterado. Atualize a página.");
+      await tx.contact.updateMany({
+        where: { organizationId: id, id: { notIn: keep } },
+        data: { organizationId: null, version: { increment: 1 } },
+      });
+      for (const { id: contactId, ...contact } of editedContacts) {
+        if (contactId)
+          await tx.contact.update({
+            where: { id: contactId },
+            data: { ...contact, version: { increment: 1 } },
+          });
+        else
+          await tx.contact.create({ data: { ...contact, organizationId: id } });
+      }
     }
     const result = id
       ? await tx.organization.findUniqueOrThrow({
@@ -102,7 +128,15 @@ export async function saveOrganization(
           include: { contacts: true },
         })
       : await tx.organization.create({
-          data: { ...data, contacts: { create: contacts } },
+          data: {
+            ...data,
+            contacts: {
+              create: contacts.map(({ id: _id, ...c }) => {
+                void _id;
+                return c;
+              }),
+            },
+          },
           include: { contacts: true },
         });
     await tx.auditLog.create({

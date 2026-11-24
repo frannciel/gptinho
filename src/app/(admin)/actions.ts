@@ -14,6 +14,9 @@ function failure(error: unknown): ActionResult {
 function refresh() {
   for (const path of [
     "/dashboard",
+    "/contatos",
+    "/tarefas",
+    "/calendario",
     "/orgaos",
     "/fornecedores",
     "/configuracoes",

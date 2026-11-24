@@ -1,6 +1,6 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import { beforeAll, afterAll, describe, expect, it } from "vitest";
+import { beforeAll, afterAll, afterEach, describe, expect, it } from "vitest";
 import { createDb } from "@/lib/db-client";
 import { createFirstAdmin } from "@/server/admin";
 import {
@@ -68,6 +68,9 @@ afterAll(async () => {
   } finally {
     await db.$disconnect();
   }
+});
+afterEach(async () => {
+  await db.contact.deleteMany({ where: { organizationId: null } });
 });
 describe.sequential("PostgreSQL real: fundação", () => {
   it("provisiona somente um primeiro administrador sob concorrência", async () => {
@@ -178,7 +181,7 @@ describe.sequential("PostgreSQL real: fundação", () => {
     await saveOrganization(db, actorId, base, org.id, org.version);
     await deleteOrganization(db, actorId, org.id, 4);
     expect(await db.organization.count()).toBe(0);
-    expect(await db.contact.count()).toBe(0);
+    expect(await db.contact.count({ where: { organizationId: null } })).toBe(1);
     expect(
       await db.auditLog.count({
         where: { entityId: org.id, action: "DELETE" },

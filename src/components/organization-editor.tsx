@@ -64,6 +64,7 @@ export async function OrganizationEditor({
       notes: org.notes ?? "",
       active: org.active,
       contacts: org.contacts.map((c) => ({
+        id: c.id,
         name: c.name,
         position: c.position ?? "",
         email: c.email ?? "",

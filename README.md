@@ -10,6 +10,7 @@ Sistema interno da **Govnex Soluções Digitais Ltda.**: fundação, autenticaç
 - Hash Argon2id, autorização de administrador no servidor, verificação de usuário ativo e versão de sessão em cada acesso privado.
 - Login/logout, bootstrap administrativo por terminal, recuperação operacional por terminal, sem cadastro público ou senha padrão.
 - Cadastro unificado de organizações, com papéis órgão público e fornecedor e páginas próprias. CNPJ único, UASG, contatos, categorias, observações, ativação/desativação, busca, filtros, paginação, edição e exclusão confirmada.
+- Contatos independentes com organização opcional, tarefas e calendário operacional com alertas internos. Consulte [Contatos e agenda](docs/CONTATOS_AGENDA.md).
 - Configurações cadastrais da empresa, auditoria transacional e proteção contra sobrescrita concorrente.
 - Contratações vinculadas aos órgãos: itens, valor estimado calculado pela soma dos itens, dois links, prazos em Brasília com ajuda, situações, auditoria e arquivamento/restauração.
 - Dashboard com contagens consultadas no banco; módulos futuros explicitamente identificados, sem indicadores fictícios.
@@ -18,7 +19,7 @@ Sistema interno da **Govnex Soluções Digitais Ltda.**: fundação, autenticaç
 - Catálogo de materiais/serviços, fornecedores múltiplos e históricos, precificação decimal, ofertas vencedoras e resumo financeiro.
 - Importação JSON em lote com prévia e confirmação; exportação de dados de proposta em JSON/Markdown por arquivo.
 
-**Escopo atualizado:** gestão de cotações está fora do MVP. A proposta comercial será elaborada por agente externo com arquivos e modelo fornecidos pelo usuário, sem integração direta. Contratos completos, pedidos/fornecimentos e faturamento/recebimentos continuam para definição das próximas entregas. Consulte o [planejamento atualizado](docs/PLANEJAMENTO.md) e os [formatos de arquivos](docs/ARQUIVOS_IMPORTACAO_EXPORTACAO.md).
+**Escopo atualizado:** gestão de cotações está fora do MVP. A proposta comercial será elaborada por agente externo com arquivos e modelo fornecidos pelo usuário, sem integração direta. Contratos, pedidos/fornecimentos e registro de notas/recebimentos estão implementados. A próxima etapa financeira será definida separadamente. Consulte o [planejamento atualizado](docs/PLANEJAMENTO.md) e os [formatos de arquivos](docs/ARQUIVOS_IMPORTACAO_EXPORTACAO.md).
 
 ## Requisitos e instalação
 

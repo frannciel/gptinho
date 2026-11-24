@@ -63,7 +63,7 @@ describe("Cadastros", () => {
     expect(
       organizationSchema.safeParse({
         ...valid,
-        contacts: Array(21).fill({
+        contacts: Array(1001).fill({
           name: "Contato",
           email: "",
           phone: "",
