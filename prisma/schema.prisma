@@ -76,6 +76,9 @@ model Contact {
   position       String?
   email          String?       @unique
   phone          String?
+  phones         Json          @default("[]")
+  notes          String?
+  linkedInUrl    String?
 
   @@index([organizationId])
   @@index([createdAt, id])

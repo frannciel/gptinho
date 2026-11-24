@@ -1,6 +1,7 @@
 import type { OrganizationRole, PrismaClient } from "@prisma/client";
 import { z } from "zod";
 import { organizationSchema, idSchema } from "@/lib/validation";
+import { updatePrimaryPhone } from "@/lib/agenda";
 import { BusinessError } from "@/lib/errors";
 export const listSchema = z.object({
   q: z.string().trim().max(120).default(""),
@@ -113,12 +114,21 @@ export async function saveOrganization(
         data: { organizationId: null, version: { increment: 1 } },
       });
       for (const { id: contactId, ...contact } of editedContacts) {
-        if (contactId)
+        if (contactId) {
+          const phones = updatePrimaryPhone(
+            before!.contacts.find((c) => c.id === contactId)!,
+            contact.phone,
+          );
           await tx.contact.update({
             where: { id: contactId },
-            data: { ...contact, version: { increment: 1 } },
+            data: {
+              ...contact,
+              phone: phones[0]?.number ?? null,
+              phones,
+              version: { increment: 1 },
+            },
           });
-        else
+        } else
           await tx.contact.create({ data: { ...contact, organizationId: id } });
       }
     }

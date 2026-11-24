@@ -64,6 +64,17 @@ test("contato independente, vínculo, tarefa, alerta e calendário responsivo", 
   await expect(page.getByLabel("Telefone", { exact: true })).toHaveValue(
     "(61) 99999-1234",
   );
+  await page.getByLabel("WhatsApp do telefone 1", { exact: true }).check();
+  await page
+    .getByRole("button", { name: "Adicionar telefone", exact: true })
+    .click();
+  await page.getByLabel("Telefone 2", { exact: true }).fill("6133334444");
+  await page
+    .getByLabel("Observações", { exact: true })
+    .fill("Falar com o setor de compras");
+  await page
+    .getByLabel("Perfil no LinkedIn", { exact: true })
+    .fill("https://www.linkedin.com/in/pessoa");
   await page.getByRole("button", { name: "Salvar", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("salvo");
   await expect(
@@ -83,6 +94,14 @@ test("contato independente, vínculo, tarefa, alerta e calendário responsivo", 
   await expect(
     page.getByRole("row").filter({ hasText: `Pessoa ${tag}` }),
   ).toContainText(`Órgão Agenda ${tag}`);
+  const contactRow = page.getByRole("row").filter({ hasText: `Pessoa ${tag}` });
+  await expect(contactRow).toContainText("(61) 3333-4444");
+  await expect(
+    contactRow.getByRole("link", {
+      name: `WhatsApp de Pessoa ${tag}`,
+      exact: false,
+    }),
+  ).toHaveAttribute("href", "https://wa.me/5561999991234");
   await page.goto("/tarefas/nova");
   await page.getByLabel("Título", { exact: false }).fill(`Compromisso ${tag}`);
   await page.getByLabel("Data / prazo", { exact: false }).fill("2026-11-20");
@@ -96,6 +115,18 @@ test("contato independente, vínculo, tarefa, alerta e calendário responsivo", 
     page.getByRole("row").filter({ hasText: `Compromisso ${tag}` }),
   ).toContainText("Atrasada");
   await page.goto("/calendario?month=2026-11&view=list&type=TASK");
+  await page
+    .getByRole("group", { name: "Visualização do calendário" })
+    .getByRole("link", { name: "Mensal", exact: true })
+    .click();
+  await expect(page).toHaveURL(/view=month/);
+  await page
+    .getByRole("group", { name: "Visualização do calendário" })
+    .getByRole("link", { name: "Lista", exact: true })
+    .click();
+  await expect(page).toHaveURL(/view=list/);
+  await page.getByRole("link", { name: "Limpar", exact: true }).click();
+  await expect(page).toHaveURL(/view=list/);
   const item = page
     .getByRole("listitem")
     .filter({ hasText: `Compromisso ${tag}` });
@@ -137,4 +168,39 @@ test("contato independente, vínculo, tarefa, alerta e calendário responsivo", 
   page.once("dialog", (d) => d.accept());
   await row.getByRole("button", { name: "Excluir", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("excluída");
+});
+
+test("órgão público permite registrar endereço sem alterar telefones adicionais do contato", async ({
+  page,
+}) => {
+  await page.goto("/login");
+  await page.getByLabel("E-mail corporativo").fill(email);
+  await page.getByLabel("Senha", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Entrar no sistema" }).click();
+  await expect(page).toHaveURL(/\/dashboard$/);
+  await page.goto(`/orgaos/${orgId}/editar`);
+  await page.getByLabel("CEP", { exact: true }).fill("70040900");
+  await page.getByLabel("Cidade", { exact: true }).fill("Brasília");
+  await page.getByLabel("Estado (UF)", { exact: true }).selectOption("DF");
+  await page
+    .getByLabel("Endereço", { exact: true })
+    .fill("Praça dos Três Poderes");
+  await page
+    .getByRole("button", { name: "Salvar cadastro", exact: true })
+    .click();
+  await expect(page.getByRole("status")).toContainText("salvo");
+  const org = await db.organization.findUniqueOrThrow({
+    where: { id: orgId },
+    include: { contacts: true },
+  });
+  expect(org).toMatchObject({
+    postalCode: "70040900",
+    city: "Brasília",
+    state: "DF",
+    address: "Praça dos Três Poderes",
+  });
+  expect(org.contacts[0].phones).toEqual([
+    { number: "61999991234", whatsapp: true },
+    { number: "6133334444", whatsapp: false },
+  ]);
 });

@@ -55,6 +55,20 @@ Testes abrangem normalização/validação, datas em Brasília, autenticação d
 
 ## Verificação desta entrega
 
-TypeScript, lint, formatação e build de produção passaram. Foram executados 176 testes unitários, 125 de integração em PostgreSQL local e 18 cenários de navegador. O cenário novo de Contatos/Agenda foi repetido após a correção do nome acessível do campo Situação; os 17 cenários anteriores passaram na execução da suíte.
+TypeScript, lint, formatação e build de produção passaram. Foram executados 179 testes unitários, 127 de integração em PostgreSQL local e 19 cenários de navegador. Os testes incluem telefones adicionais, WhatsApp, preservação de dados, endereço do órgão e alternância Mensal/Lista com conservação da visualização ao limpar filtros.
 
 A cadeia de migrations foi validada executando seu SQL em um schema isolado do PostgreSQL de testes, inclusive com um contato legado antes da nova migration. O motor de schema do Prisma não pôde ser baixado neste ambiente (HTTP 403 em binaries.prisma.sh); por isso, a aplicação local da migration usou SQL transacional. O cliente Prisma foi gerado e utilizado nos testes. Não houve conexão nem aplicação de migrations no Neon nesta entrega.
+
+## Ajustes de telefones, endereço e visualização
+
+Contatos aceitam até 20 telefones, cada um com indicação opcional de WhatsApp. Os números são normalizados e não podem se repetir dentro do mesmo contato. A listagem apresenta todos os números e o link `wa.me` apenas nos marcados como WhatsApp; para números brasileiros sem prefixo internacional, o link acrescenta o código 55. Abrir o link é uma ação do usuário; o sistema não envia mensagens.
+
+Observações e Perfil no LinkedIn são opcionais. Perfis aceitam HTTPS no domínio LinkedIn, no caminho `/in/`. A edição embutida nas organizações preserva os telefones adicionais, as indicações de WhatsApp, as observações e o LinkedIn. O link Telefones e detalhes leva ao cadastro completo do contato. Alterar o número principal não presume que o novo número também tenha WhatsApp.
+
+A migration `202611240002_contact_phones_profile` adiciona os novos campos e migra o telefone existente como primeiro número, com WhatsApp desmarcado. O campo anterior permanece como representação do primeiro número para compatibilidade. As alterações são auditadas e continuam sujeitas a controle de versão.
+
+Órgãos públicos exibem o mesmo bloco de endereço dos fornecedores, com CEP, cidade, UF e endereço separados, utilizando os campos já existentes no banco. Não há consulta externa automática de CEP.
+
+O calendário oferece botões Mensal e Lista fora do formulário de filtros. A mudança de visualização conserva os filtros; Filtrar e Limpar conservam a visualização escolhida. Em celular, o conteúdo permanece em lista para facilitar a leitura.
+
+Para disponibilizar este ajuste, aplicar a nova migration em homologação com `npm run db:migrate`, validar os telefones legados e então seguir o procedimento de deploy aprovado. Não há novas variáveis de ambiente.

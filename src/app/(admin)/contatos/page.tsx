@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Plus, Pencil } from "lucide-react";
+import { Plus, Pencil, MessageCircle } from "lucide-react";
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
 import { contactFilters, listContacts } from "@/server/contacts";
@@ -8,6 +8,7 @@ import { ButtonContent } from "@/components/button-content";
 import { OrganizationFilter } from "@/components/organization-filter";
 import { AgendaDelete } from "@/components/agenda-delete";
 import { AgendaPagination } from "@/components/agenda-pagination";
+import { contactPhones, whatsappUrl } from "@/lib/agenda";
 import { maskPhone } from "@/lib/input-masks";
 export const metadata = { title: "Contatos" };
 export default async function Page({
@@ -108,7 +109,29 @@ export default async function Page({
                 <td className="p-4">{c.position ?? "—"}</td>
                 <td className="p-4">{c.email ?? "—"}</td>
                 <td className="p-4 whitespace-nowrap">
-                  {c.phone ? maskPhone(c.phone) : "—"}
+                  {contactPhones(c).length ? (
+                    <ul className="space-y-2">
+                      {contactPhones(c).map((p) => (
+                        <li key={p.number} className="flex items-center gap-2">
+                          <span>{maskPhone(p.number)}</span>
+                          {p.whatsapp && (
+                            <a
+                              className="inline-flex items-center gap-1 font-medium text-green-700 hover:underline"
+                              href={whatsappUrl(p.number)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              aria-label={`WhatsApp de ${c.name}: ${maskPhone(p.number)}`}
+                            >
+                              <MessageCircle size={16} />
+                              <span>WhatsApp</span>
+                            </a>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="p-4">
                   {c.organization?.legalName ?? "Sem organização"}

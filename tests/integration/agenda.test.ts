@@ -102,6 +102,55 @@ describe.sequential("Contatos, tarefas e calendário em PostgreSQL", () => {
       (await listContacts(db, { q: tag, organizationId: "none" })).count,
     ).toBe(1);
   });
+  it("persiste telefones, observações e LinkedIn sem perder adicionais em edições embutidas", async () => {
+    const standalone = await saveContact(db, actorId, {
+      ...person,
+      email: `multi-${tag.toLowerCase()}@example.org`,
+      phones: [
+        { number: "(61) 99999-1234", whatsapp: true },
+        { number: "(61) 3333-4444", whatsapp: false },
+      ],
+      notes: "Contato de compras",
+      linkedInUrl: "https://www.linkedin.com/in/pessoa",
+      organizationId,
+    });
+    const org = await db.organization.findUniqueOrThrow({
+      where: { id: organizationId },
+    });
+    await saveOrganization(
+      db,
+      actorId,
+      {
+        ...orgInput,
+        contacts: [
+          {
+            id: standalone.id,
+            name: standalone.name,
+            email: standalone.email,
+            phone: standalone.phone,
+            position: "Compras",
+          },
+        ],
+      },
+      org.id,
+      org.version,
+    );
+    const after = await db.contact.findUniqueOrThrow({
+      where: { id: standalone.id },
+    });
+    expect(after.phones).toEqual([
+      { number: "61999991234", whatsapp: true },
+      { number: "6133334444", whatsapp: false },
+    ]);
+    expect(
+      (await listContacts(db, { q: "(61) 3333-4444" })).items.some(
+        (c) => c.id === standalone.id,
+      ),
+    ).toBe(true);
+    expect(after.notes).toBe("Contato de compras");
+    expect(after.linkedInUrl).toBe("https://www.linkedin.com/in/pessoa");
+    await deleteContact(db, actorId, after.id, after.version);
+  });
   it("unicidade de e-mail vale com ou sem organização", async () => {
     await expect(
       saveContact(db, actorId, {

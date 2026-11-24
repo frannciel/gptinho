@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { z } from "zod";
-import { Plus } from "lucide-react";
+import { Plus, CalendarDays, List } from "lucide-react";
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
 import { brazilDay, monthRange, eventTypes, isOverdue } from "@/lib/agenda";
@@ -132,23 +132,42 @@ export default async function Page({
           initial={org ? { id: org.id, label: org.legalName } : null}
           unlinked={filter.organizationId === "none"}
         />
-        <label>
-          Visualização
-          <select className="field" name="view" defaultValue={filter.view}>
-            <option value="month">Mensal</option>
-            <option value="list">Lista</option>
-          </select>
-        </label>
+        <input type="hidden" name="view" value={filter.view} />
         <div className="flex gap-2">
           <button className="btn">
             <ButtonContent action="filter" />
           </button>
-          <Link className="btn-secondary" href="/calendario">
+          <Link
+            className="btn-secondary"
+            href={`/calendario?view=${filter.view}`}
+          >
             <ButtonContent action="clear" />
           </Link>
         </div>
       </form>
       <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div
+          role="group"
+          aria-label="Visualização do calendário"
+          className="flex gap-2 rounded-lg border border-slate-200 bg-white p-1"
+        >
+          <Link
+            className={filter.view === "month" ? "btn" : "btn-secondary"}
+            href={href(filter.month, "month")}
+            aria-current={filter.view === "month" ? "page" : undefined}
+          >
+            <CalendarDays size={16} />
+            Mensal
+          </Link>
+          <Link
+            className={filter.view === "list" ? "btn" : "btn-secondary"}
+            href={href(filter.month, "list")}
+            aria-current={filter.view === "list" ? "page" : undefined}
+          >
+            <List size={16} />
+            Lista
+          </Link>
+        </div>
         {filter.month > "1900-01" && (
           <Link
             className="btn-secondary"

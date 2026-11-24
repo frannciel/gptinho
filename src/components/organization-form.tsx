@@ -239,17 +239,17 @@ export function OrganizationForm({
           </Field>
         </div>
       </fieldset>
-      {base === "/fornecedores" && (
+      {
         <fieldset disabled={pending} className="panel p-5 md:p-7">
-          <legend className="sr-only">Endereço do fornecedor</legend>
-          <h2 className="mb-5 font-semibold">Endereço do fornecedor</h2>
+          <legend className="sr-only">Endereço</legend>
+          <h2 className="mb-5 font-semibold">Endereço</h2>
           <AddressFields
             values={values}
             errors={result?.errors}
             onChange={(key, value) => set(key, value)}
           />
         </fieldset>
-      )}
+      }
       <fieldset disabled={pending} className="panel p-5 md:p-7">
         <legend className="sr-only">Contatos</legend>
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
@@ -290,6 +290,14 @@ export function OrganizationForm({
                 <h3 className="text-xs font-semibold text-slate-500">
                   Contato {index + 1}
                 </h3>
+                {contact.id && (
+                  <Link
+                    className="text-xs font-semibold text-brand-600"
+                    href={`/contatos/${contact.id}/editar`}
+                  >
+                    Telefones e detalhes
+                  </Link>
+                )}
                 <button
                   type="button"
                   className="flex items-center gap-1 text-xs text-red-700"
