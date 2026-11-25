@@ -90,6 +90,17 @@ test("SRP: indicador, participantes e cadastro/edição/exclusão da ata", async
     new RegExp(`/contratacoes/${opp}\\?notice=saved`),
   );
   await page.getByRole("link", { name: "Participantes", exact: true }).click();
+  await page
+    .getByRole("link", { name: "Adicionar participante", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Adicionar participante", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: "Cancelar", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await page
+    .getByRole("link", { name: "Adicionar participante", exact: true })
+    .click();
   await page.getByRole("combobox", { name: "Órgão participante *" }).fill(tag);
   await page
     .getByRole("option", { name: `Participante ${tag}`, exact: true })
@@ -101,6 +112,13 @@ test("SRP: indicador, participantes e cadastro/edição/exclusão da ata", async
   await page
     .getByRole("link", { name: "Registros de preços", exact: true })
     .click();
+  await page.getByRole("link", { name: "Nova ata", exact: true }).click();
+  await expect(
+    page.getByRole("dialog", {
+      name: "Nova ata de registro de preços",
+      exact: true,
+    }),
+  ).toBeVisible();
   const form = page
     .locator("form")
     .filter({ has: page.getByLabel("Número da ata *", { exact: true }) });
@@ -123,8 +141,10 @@ test("SRP: indicador, participantes e cadastro/edição/exclusão da ata", async
   await expect(
     page.getByRole("columnheader", { name: "Disponível", exact: true }),
   ).toBeVisible();
-  await page.getByText("Editar ata ARP-01", { exact: true }).click();
-  const edit = page.locator("details").locator("form");
+  await page
+    .getByRole("link", { name: "Editar ata ARP-01", exact: true })
+    .click();
+  const edit = page.getByRole("dialog").locator("form");
   await edit
     .getByLabel("Observações", { exact: true })
     .fill("Observação atualizada");

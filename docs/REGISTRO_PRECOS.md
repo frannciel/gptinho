@@ -43,3 +43,11 @@ Para rollback da aplicação, manter as novas estruturas e dados no banco, sem e
 ## Validação da entrega
 
 TypeScript, lint, formatação e build de produção passaram. Foram validados 183 testes unitários, 137 de integração em PostgreSQL local e 20 cenários de navegador. Cobertura de SRP: exigência do indicador, distinção de gerenciador/participante, duplicações, troca de gerenciador, desmarcação protegida, origem dos itens, cópia decimal exata, preservação do histórico, versão desatualizada, arquivamento, exclusão e auditoria. O cenário de navegador percorre a marcação SRP, inclusão de participante e cadastro, edição e exclusão da ata.
+
+## Interfaces de cadastro
+
+Na guia Registros de preços, o botão Nova ata abre um modal com os dados da ata e seleção dos itens. A edição usa o mesmo formulário pelo botão Editar ata. Na guia Participantes, Adicionar participante abre um modal com busca de órgão público.
+
+Os formulários oferecem Salvar e Cancelar; o modal também fecha pelo botão de fechar ou Escape. Salvar retorna à listagem com confirmação. Os botões de criação ficam no topo das guias e dependem do indicador SRP e de a contratação não estar arquivada. A mensagem de contratação sem SRP inclui acesso à edição para marcar o indicador.
+
+Esta atualização de interface usa a estrutura de banco já preparada na entrega SRP, sem nova migration. Validação: TypeScript, lint, build de produção e teste de navegador do fluxo SRP, incluindo cancelamento do modal, cadastro de participante e cadastro/edição/exclusão de ata.
