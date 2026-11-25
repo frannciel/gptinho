@@ -24,6 +24,7 @@ export async function requireAdmin() {
       role: true,
       active: true,
       sessionVersion: true,
+      version: true,
     },
   });
   if (!user?.active || user.sessionVersion !== session.user.sessionVersion)

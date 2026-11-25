@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { NotificationBell } from "@/components/notification-bell";
 import { requireAdminPage } from "@/lib/authorization";
 import { SidebarFrame, SidebarToggle } from "@/components/sidebar-frame";
@@ -24,14 +25,17 @@ export default async function AdminLayout({
         <header className="flex min-h-20 items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 md:px-9">
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <SidebarToggle />
-            <details className="relative shrink-0 lg:hidden">
+            <details
+              data-mobile-navigation
+              className="relative shrink-0 lg:hidden"
+            >
               <summary
                 className="list-none rounded-lg p-2"
                 aria-label="Abrir menu"
               >
                 <Menu size={22} />
               </summary>
-              <div className="absolute top-12 left-0 z-30 w-64 rounded-xl bg-[var(--sidebar)] p-4 shadow-xl">
+              <div className="absolute top-12 left-0 z-30 max-h-[75dvh] w-64 overflow-y-auto rounded-xl bg-[var(--sidebar)] p-4 shadow-xl">
                 <Navigation mobile />
               </div>
             </details>
@@ -49,7 +53,11 @@ export default async function AdminLayout({
               <ShieldCheck size={13} />
               Acesso protegido
             </span>
-            <div className="flex items-center gap-3 border-l border-slate-200 pl-2 sm:pl-4">
+            <Link
+              href="/meu-perfil"
+              aria-label="Meu perfil"
+              className="flex items-center gap-3 border-l border-slate-200 pl-2 sm:pl-4"
+            >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eaf0f1] text-xs font-bold text-slate-700">
                 {user.name
                   .split(" ")
@@ -64,7 +72,7 @@ export default async function AdminLayout({
                 </p>
                 <p className="text-[11px] text-slate-500">Administrador</p>
               </div>
-            </div>
+            </Link>
             <NotificationBell />
             <Logout />
           </div>

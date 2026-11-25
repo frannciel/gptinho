@@ -10,7 +10,11 @@ try {
       throw new Error("Administrador não encontrado.");
     await tx.user.update({
       where: { id: user.id },
-      data: { passwordHash, sessionVersion: { increment: 1 } },
+      data: {
+        passwordHash,
+        sessionVersion: { increment: 1 },
+        version: { increment: 1 },
+      },
     });
     await tx.auditLog.create({
       data: {
