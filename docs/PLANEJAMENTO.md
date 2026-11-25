@@ -62,3 +62,13 @@ Esta entrega não inclui emissão fiscal, XML/NF-e, gestão documental, execuç�
 - Bloco de endereço dos órgãos públicos no mesmo padrão dos fornecedores.
 - Botões Mensal/Lista separados dos filtros do calendário.
 - Nova migration de telefones/perfil; financeiro permanece para a próxima etapa.
+
+### Registro de Preços (SRP)
+
+- Indicador SRP na contratação e identificação do gerenciador.
+- Guias Registros de preços e Participantes.
+- Várias atas por contratação, com itens copiados e histórico preservado.
+- Órgãos participantes distintos do gerenciador, sem duplicações.
+- Cadastro, edição e exclusão protegida de atas; auditoria e controle de versão.
+- Disponível inicialmente igual à quantidade da ata; baixas por contratos, pedidos e adesões ficam para definição posterior.
+- Migration e regras em [REGISTRO_PRECOS.md](REGISTRO_PRECOS.md). Financeiro permanece adiado.
