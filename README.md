@@ -2,6 +2,10 @@
 
 Sistema interno da **Govnex Soluções Digitais Ltda.**: fundação, autenticação, cadastros e contratações. Independente do site institucional, com destino futuro `app.govnex.com.br`.
 
+## Manual de uso
+
+Consulte o [manual do usuário](docs/MANUAL_USUARIO.md), com instruções de [Contratações](docs/manual/contratacoes.md) e [Contratos](docs/manual/contratos.md), exemplos, alertas e dúvidas frequentes.
+
 ## O que está implementado
 
 - Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4.
