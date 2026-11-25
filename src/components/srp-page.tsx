@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { Plus, Pencil } from "lucide-react";
+import { Modal } from "./modal";
+import { ButtonContent } from "./button-content";
 import { notFound } from "next/navigation";
 import { requireAdminPage } from "@/lib/authorization";
 import { db } from "@/lib/db";
@@ -12,9 +15,11 @@ const date = (d: Date) =>
 export async function SrpPage({
   id,
   participants = false,
+  query = {},
 }: {
   id: string;
   participants?: boolean;
+  query?: Record<string, string | string[] | undefined>;
 }) {
   await requireAdminPage();
   if (!idSchema.safeParse(id).success) notFound();
@@ -36,6 +41,16 @@ export async function SrpPage({
   if (!o) notFound();
   const editable = o.isSrp && !o.archived;
   const props = { opportunityId: id, version: o.version };
+  const base = `/contratacoes/${id}/${participants ? "participantes" : "registros-precos"}`;
+  const creating =
+    editable &&
+    (participants ? query.acao === "participante" : query.acao === "nova");
+  const editing = editable && !participants && query.acao === "editar";
+  const selected = editing
+    ? o.priceRegistrations.find((r) => r.id === query.ata)
+    : undefined;
+  if (editing && !selected) notFound();
+
   const fields = (r?: (typeof o.priceRegistrations)[number]) => (
     <>
       {r && <input type="hidden" name="id" value={r.id} />}
@@ -138,9 +153,21 @@ export async function SrpPage({
         title={o.reference}
         description={`Gerenciador: ${o.organization.legalName}`}
         action={
-          <Link className="btn-secondary" href={`/contratacoes/${id}`}>
-            Voltar à contratação
-          </Link>
+          <div className="flex flex-wrap gap-3">
+            {editable && (
+              <Link
+                className="btn"
+                href={`${base}?acao=${participants ? "participante" : "nova"}`}
+                scroll={false}
+              >
+                <Plus size={17} />
+                {participants ? "Adicionar participante" : "Nova ata"}
+              </Link>
+            )}
+            <Link className="btn-secondary" href={`/contratacoes/${id}`}>
+              <ButtonContent action="back" />
+            </Link>
+          </div>
         }
       />
       <ContractingTabs
@@ -150,7 +177,13 @@ export async function SrpPage({
       {!o.isSrp && (
         <p className="panel mb-5 p-4">
           Esta contratação não é SRP. Marque Registro de Preços na edição para
-          cadastrar atas e participantes.
+          cadastrar atas e participantes.{" "}
+          <Link
+            className="font-semibold underline"
+            href={`/contratacoes/${id}/editar`}
+          >
+            Editar contratação
+          </Link>
         </p>
       )}
       {o.archived && (
@@ -195,12 +228,6 @@ export async function SrpPage({
             </ul>
             {!o.participants.length && <p>Nenhum participante cadastrado.</p>}
           </section>
-          {editable && (
-            <section className="panel max-w-3xl p-5">
-              <h2 className="mb-4 font-semibold">Adicionar participante</h2>
-              <SrpForm {...props} operation="addParticipant" />
-            </section>
-          )}
         </>
       ) : (
         <>
@@ -277,16 +304,14 @@ export async function SrpPage({
               </p>
               {editable && (
                 <>
-                  <details className="mb-4">
-                    <summary className="cursor-pointer font-semibold text-brand-600">
-                      Editar ata {r.reference}
-                    </summary>
-                    <div className="mt-4">
-                      <SrpForm {...props} operation="save">
-                        {fields(r)}
-                      </SrpForm>
-                    </div>
-                  </details>
+                  <Link
+                    className="btn-secondary mb-4"
+                    href={`${base}?acao=editar&ata=${r.id}`}
+                    scroll={false}
+                  >
+                    <Pencil size={16} />
+                    Editar ata {r.reference}
+                  </Link>
                   <SrpForm
                     {...props}
                     operation="delete"
@@ -298,17 +323,40 @@ export async function SrpPage({
               )}
             </section>
           ))}
-          {editable && (
-            <section className="panel p-5">
-              <h2 className="mb-5 text-lg font-semibold">
-                Nova ata de registro de preços
-              </h2>
-              <SrpForm {...props} operation="save">
-                {fields()}
-              </SrpForm>
-            </section>
-          )}
         </>
+      )}
+      {query.notice === "saved" && (
+        <p role="status" className="panel mt-4 p-4 text-green-800">
+          {participants
+            ? "Participante cadastrado com sucesso."
+            : "Ata salva com sucesso."}
+        </p>
+      )}
+      {(creating || editing) && (
+        <Modal
+          title={
+            participants
+              ? "Adicionar participante"
+              : selected
+                ? `Editar ata ${selected.reference}`
+                : "Nova ata de registro de preços"
+          }
+          closeHref={base}
+        >
+          <div className="p-6">
+            <p className="mb-5 text-sm text-slate-500">
+              Contratação {o.reference} · Gerenciador:{" "}
+              {o.organization.legalName}
+            </p>
+            <SrpForm
+              {...props}
+              operation={participants ? "addParticipant" : "save"}
+              returnHref={base}
+            >
+              {!participants && fields(selected)}
+            </SrpForm>
+          </div>
+        </Modal>
       )}
     </>
   );

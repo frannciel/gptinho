@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+import { Trash2, UserMinus } from "lucide-react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ActionForm } from "./action-form";
@@ -11,12 +13,14 @@ export function SrpForm({
   operation,
   children,
   confirmation,
+  returnHref,
 }: {
   opportunityId: string;
   version: number;
   operation: "save" | "delete" | "addParticipant" | "removeParticipant";
   children?: React.ReactNode;
   confirmation?: string;
+  returnHref?: string;
 }) {
   const router = useRouter();
   const [organization, setOrganization] = useState<{
@@ -37,6 +41,8 @@ export function SrpForm({
               ? "Registro removido."
               : "Registro salvo.",
           );
+          if (returnHref)
+            router.push(`${returnHref}?notice=saved`, { scroll: false });
           router.refresh();
         }
         return result;
@@ -64,21 +70,34 @@ export function SrpForm({
         </>
       )}
       {children}
-      <button
-        className={
-          operation === "delete" || operation === "removeParticipant"
-            ? "btn-secondary text-red-700"
-            : "btn"
-        }
-      >
-        {operation === "delete" ? (
-          "Excluir ata"
-        ) : operation === "removeParticipant" ? (
-          "Remover participante"
-        ) : (
-          <ButtonContent action="save" />
+      <div className="mt-6 flex flex-wrap gap-3">
+        <button
+          className={
+            operation === "delete" || operation === "removeParticipant"
+              ? "btn-secondary text-red-700"
+              : "btn"
+          }
+        >
+          {operation === "delete" ? (
+            <>
+              <Trash2 size={16} />
+              Excluir ata
+            </>
+          ) : operation === "removeParticipant" ? (
+            <>
+              <UserMinus size={16} />
+              Remover participante
+            </>
+          ) : (
+            <ButtonContent action="save" />
+          )}
+        </button>
+        {returnHref && (
+          <Link className="btn-secondary" href={returnHref} scroll={false}>
+            <ButtonContent action="cancel" />
+          </Link>
         )}
-      </button>
+      </div>
     </ActionForm>
   );
 }
