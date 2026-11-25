@@ -17,18 +17,20 @@ enum OrganizationRole {
 }
 
 model User {
-  id             String      @id @default(cuid())
-  name           String
-  email          String      @unique
-  passwordHash   String
-  role           Role        @default(USER)
-  active         Boolean     @default(true)
-  sessionVersion Int         @default(0)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  tasks          Task[]
-  eventReads     EventRead[]
-  auditLogs      AuditLog[]
+  id                      String                   @id @default(cuid())
+  name                    String
+  email                   String                   @unique
+  passwordHash            String
+  role                    Role                     @default(USER)
+  active                  Boolean                  @default(true)
+  sessionVersion          Int                      @default(0)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  notifications           Notification[]
+  tasks                   Task[]
+  eventReads              EventRead[]
+  auditLogs               AuditLog[]
+  notificationPreferences NotificationPreference[]
 }
 
 model Organization {
@@ -683,4 +685,104 @@ model PriceRegistrationItem {
 
   @@unique([registrationId, sourceItemId])
   @@index([sourceItemId, opportunityId])
+}
+
+enum NotificationKind {
+  SESSION
+  DELIVERY
+  CONTRACT
+  PRICE_REGISTRATION
+  GUARANTEE
+  TASK
+}
+
+enum NotificationState {
+  ACTIVE
+  RESOLVED
+  CANCELLED
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WHATSAPP
+}
+
+enum NotificationDeliveryState {
+  DISABLED
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+model NotificationEvent {
+  key       String   @id
+  revision  Int      @default(1)
+  dueAt     DateTime @db.Timestamptz(3)
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+}
+
+model NotificationSyncState {
+  id        String   @id
+  lastRunAt DateTime @db.Timestamptz(3)
+}
+
+model Notification {
+  id          String                 @id @default(cuid())
+  recipientId String
+  recipient   User                   @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  sourceKey   String
+  revision    Int
+  kind        NotificationKind
+  stage       String
+  title       String
+  body        String
+  href        String
+  dueAt       DateTime               @db.Timestamptz(3)
+  visibleAt   DateTime               @db.Timestamptz(3)
+  state       NotificationState      @default(ACTIVE)
+  closedAt    DateTime?              @db.Timestamptz(3)
+  readAt      DateTime?              @db.Timestamptz(3)
+  dismissedAt DateTime?              @db.Timestamptz(3)
+  createdAt   DateTime               @default(now())
+  deliveries  NotificationDelivery[]
+
+  @@unique([recipientId, sourceKey, revision, stage])
+  @@index([recipientId, state, visibleAt])
+  @@index([sourceKey, state])
+  @@index([recipientId, kind, state, dueAt])
+}
+
+model NotificationDelivery {
+  id                String                    @id @default(cuid())
+  notificationId    String
+  notification      Notification              @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  channel           NotificationChannel
+  state             NotificationDeliveryState @default(DISABLED)
+  attempts          Int                       @default(0)
+  nextAttemptAt     DateTime?                 @db.Timestamptz(3)
+  lockedUntil       DateTime?                 @db.Timestamptz(3)
+  providerMessageId String?
+  errorCode         String?
+  sentAt            DateTime?                 @db.Timestamptz(3)
+
+  @@unique([notificationId, channel])
+  @@index([state, nextAttemptAt])
+}
+
+model NotificationPreference {
+  recipientId String
+  recipient   User                @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  channel     NotificationChannel
+  enabled     Boolean             @default(false)
+  destination String?
+  consentedAt DateTime?           @db.Timestamptz(3)
+  updatedAt   DateTime            @updatedAt
+
+  @@id([recipientId, channel])
 }

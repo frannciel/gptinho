@@ -10,6 +10,7 @@ Sistema interno da **Govnex Soluções Digitais Ltda.**: fundação, autenticaç
 - Hash Argon2id, autorização de administrador no servidor, verificação de usuário ativo e versão de sessão em cada acesso privado.
 - Login/logout, bootstrap administrativo por terminal, recuperação operacional por terminal, sem cadastro público ou senha padrão.
 - Cadastro unificado de organizações, com papéis órgão público e fornecedor e páginas próprias. CNPJ único, UASG, contatos, categorias, observações, ativação/desativação, busca, filtros, paginação, edição e exclusão confirmada.
+- Central de notificações com sino, leitura individual, alertas de sessão e planejamento automático de prazos. E-mail/WhatsApp desativados no MVP; consulte [configuração do agendamento](docs/NOTIFICACOES.md).
 - Contatos independentes com organização opcional, tarefas e calendário operacional com alertas internos. Consulte [Contatos e agenda](docs/CONTATOS_AGENDA.md).
 - Configurações cadastrais da empresa, auditoria transacional e proteção contra sobrescrita concorrente.
 - Contratações vinculadas aos órgãos: itens, valor estimado calculado pela soma dos itens, dois links, prazos em Brasília com ajuda, situações, auditoria e arquivamento/restauração.

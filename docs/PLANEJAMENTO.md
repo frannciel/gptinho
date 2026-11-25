@@ -72,3 +72,14 @@ Esta entrega não inclui emissão fiscal, XML/NF-e, gestão documental, execuç�
 - Cadastro, edição e exclusão protegida de atas; auditoria e controle de versão.
 - Disponível inicialmente igual à quantidade da ata; baixas por contratos, pedidos e adesões ficam para definição posterior.
 - Migration e regras em [REGISTRO_PRECOS.md](REGISTRO_PRECOS.md). Financeiro permanece adiado.
+
+### Central de notificações — matriz aprovada
+
+- Sino na barra superior com contador e leitura individual.
+- Central com filtros, histórico e ações de leitura sem alterar a obrigação.
+- Sessão pública e apresentação da proposta tratadas como um único evento, com alertas de quinze minutos e início.
+- Prazos de Pedidos, vigências efetivas, atas, garantias e tarefas, conforme a matriz em [NOTIFICACOES.md](NOTIFICACOES.md).
+- Datas alteradas geram nova sequência; conclusão/arquivamento resolvem avisos; atrasos de entregas e tarefas geram aviso diário.
+- Estrutura de canais, preferências e entregas para e-mail/WhatsApp preparada, com envios desativados no MVP.
+- Endpoint e exemplo de cron preparados para operar com a aplicação fechada. Ativação depende de CRON_SECRET e de um agendador a cada minuto na implantação.
+- Migration apenas aditiva, testada localmente. Financeiro permanece para a próxima etapa.

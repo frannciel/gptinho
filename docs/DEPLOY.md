@@ -70,3 +70,9 @@ A instalação usa `registry.npmjs.org`; a CLI Prisma baixa engines e checksums 
 Os domínios adicionais foram salvos no rascunho das configurações do ambiente em nuvem; o salvamento não os aplicou à máquina. Revise/salve essas alterações no painel e publique o **ambiente** quando desejar disponibilizar sua configuração para novas tarefas. Isso é diferente de publicar a aplicação na Vercel.
 
 Enquanto o domínio Prisma estiver bloqueado, `npm ci` (postinstall), `db:generate` e a CLI nativa de migrations falharão. Veja o registro de validação para os caminhos oficiais JavaScript/WASM usados nesta execução, sem desativar verificação de artefatos. Não há promessa de restauração de processos ou banco Docker em uma nova tarefa.
+
+## Notificações e agendamento
+
+Após aplicar a migration de notificações, configurar CRON_SECRET (aleatório, pelo menos 32 caracteres) no ambiente da aplicação e um agendador HTTP a cada minuto para `/api/cron/notificacoes`, usando `Authorization: Bearer <CRON_SECRET>` no header. Conferir as execuções em homologação antes de habilitar em produção. O projeto não adiciona automaticamente cron de frequência incompatível com seu plano da Vercel; há exemplo e alternativa de agendador externo em [NOTIFICACOES.md](NOTIFICACOES.md).
+
+Sem o agendador, a consulta da barra e da central ainda sincroniza avisos, mas não substitui a operação sem usuários conectados. Os canais de e-mail e WhatsApp permanecem desativados, inclusive no cron. Não configurar remetentes, provedores ou números reais para esta entrega.

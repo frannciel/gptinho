@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Bell,
   CalendarDays,
   Users,
   ListTodo,
@@ -22,6 +23,7 @@ const links = [
   { href: "/orgaos", label: "Órgãos públicos", icon: Landmark },
   { href: "/fornecedores", label: "Fornecedores", icon: Truck },
   { href: "/contatos", label: "Contatos", icon: Users },
+  { href: "/notificacoes", label: "Notificações", icon: Bell },
   { href: "/calendario", label: "Calendário", icon: CalendarDays },
   { href: "/tarefas", label: "Tarefas", icon: ListTodo },
   { href: "/configuracoes", label: "Configurações", icon: Settings },
