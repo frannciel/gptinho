@@ -36,6 +36,7 @@ export const opportunitySchema = z
       .max(60)
       .transform((value) => value.toUpperCase()),
     organizationId: idSchema,
+    isSrp: z.boolean().optional(),
     subject: z
       .string()
       .trim()

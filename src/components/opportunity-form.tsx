@@ -101,6 +101,14 @@ export function OpportunityForm({
           Campos com * são obrigatórios. A identificação deve ser única.
         </p>
         <div className="grid gap-5 md:grid-cols-2">
+          <label className="flex items-center gap-2 md:col-span-2">
+            <input
+              type="checkbox"
+              checked={values.isSrp ?? false}
+              onChange={(e) => set("isSrp", e.target.checked)}
+            />
+            Registro de Preços (SRP)
+          </label>
           <Field
             name="reference"
             label="Identificação"

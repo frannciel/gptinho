@@ -80,6 +80,11 @@ export default async function OpportunityDetail({
         }
       />
       <ContractingTabs id={id} active="resumo" />
+      <p className="mb-4 text-sm">
+        Registro de Preços (SRP):{" "}
+        <strong>{opportunity.isSrp ? "Sim" : "Não"}</strong>
+        {opportunity.isSrp ? " · Órgão principal: gerenciador" : ""}
+      </p>
       {search.notice === "saved" && (
         <p
           role="status"

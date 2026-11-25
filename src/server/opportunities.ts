@@ -35,6 +35,28 @@ export async function saveOpportunity(
           })
         : null;
       if (id && !before) throw new BusinessError("Contratação não encontrada.");
+      if (before) {
+        if (
+          await tx.opportunityParticipant.count({
+            where: { opportunityId: id, organizationId: data.organizationId },
+          })
+        )
+          throw new BusinessError(
+            "O gerenciador não pode ser um participante. Remova esse participante antes de alterar o órgão principal.",
+          );
+        if (
+          data.isSrp === false &&
+          ((await tx.priceRegistration.count({
+            where: { opportunityId: id },
+          })) ||
+            (await tx.opportunityParticipant.count({
+              where: { opportunityId: id },
+            })))
+        )
+          throw new BusinessError(
+            "Remova as atas e os participantes antes de desmarcar Registro de Preços.",
+          );
+      }
       if (before?.archived)
         throw new BusinessError("Restaure a contratação antes de editar.");
       const agency = await tx.organization.findUnique({
@@ -373,6 +395,15 @@ export async function deleteOpportunity(
         include: includeItems,
       });
       if (!before) throw new BusinessError("Contratação não encontrada.");
+      if (
+        (await tx.priceRegistration.count({ where: { opportunityId: id } })) ||
+        (await tx.opportunityParticipant.count({
+          where: { opportunityId: id },
+        }))
+      )
+        throw new BusinessError(
+          "Remova as atas e os participantes antes de excluir a contratação.",
+        );
       if (before.archived)
         throw new BusinessError(
           "Contratações arquivadas não podem ser excluídas.",

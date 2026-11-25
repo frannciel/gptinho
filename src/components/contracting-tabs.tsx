@@ -4,7 +4,13 @@ export function ContractingTabs({
   active,
 }: {
   id: string;
-  active: "resumo" | "itens" | "precificacao" | "proposta-vencedora";
+  active:
+    | "resumo"
+    | "itens"
+    | "precificacao"
+    | "proposta-vencedora"
+    | "registros-precos"
+    | "participantes";
 }) {
   return (
     <nav
@@ -17,6 +23,8 @@ export function ContractingTabs({
           ["itens", "Gerenciar itens", "/itens"],
           ["precificacao", "Precificação", "/precificacao"],
           ["proposta-vencedora", "Proposta Vencedora", "/proposta-vencedora"],
+          ["registros-precos", "Registros de preços", "/registros-precos"],
+          ["participantes", "Participantes", "/participantes"],
         ] as const
       ).map(([key, label, suffix]) => (
         <Link

@@ -67,7 +67,10 @@ export async function saveOrganization(
     if (
       id &&
       !data.roles.includes("PUBLIC_AGENCY") &&
-      ((await tx.opportunity.count({ where: { organizationId: id } })) ||
+      ((await tx.opportunityParticipant.count({
+        where: { organizationId: id },
+      })) ||
+        (await tx.opportunity.count({ where: { organizationId: id } })) ||
         (await tx.contractCase.count({ where: { organizationId: id } })))
     )
       throw new BusinessError(

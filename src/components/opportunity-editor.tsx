@@ -35,6 +35,7 @@ export async function OpportunityEditor({ id }: { id?: string }) {
   const initial: OpportunityInput = opportunity
     ? {
         reference: opportunity.reference,
+        isSrp: opportunity.isSrp,
         organizationId: opportunity.organizationId,
         subject: opportunity.subject,
         procurementMethod: opportunity.procurementMethod,
