@@ -2,7 +2,21 @@ import { Brand } from "@/components/brand";
 import { LoginForm } from "@/components/login-form";
 import { ArrowUpRight, Check, ShieldCheck } from "lucide-react";
 export const metadata = { title: "Acesso" };
-export default function LoginPage() {
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const params = await searchParams;
+  const notices: Record<string, string> = {
+    "password-changed":
+      "Senha alterada com sucesso. Entre novamente com a nova senha.",
+    "profile-updated":
+      "Conta atualizada. Entre novamente com seu e-mail atual e sua senha.",
+    "account-disabled":
+      "Sua conta foi desativada. Solicite a reativação a outro administrador.",
+  };
+
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
       <section className="relative hidden flex-col justify-between overflow-hidden bg-[#102c30] p-14 lg:flex">
@@ -57,6 +71,16 @@ export default function LoginPage() {
           <p className="mt-3 text-sm leading-6 text-slate-500">
             Entre com sua conta para acessar o ambiente de gestão.
           </p>
+          {typeof params.notice === "string" &&
+            Object.hasOwn(notices, params.notice) &&
+            notices[params.notice] && (
+              <p
+                role="status"
+                className="mt-5 rounded bg-brand-50 p-3 text-sm text-brand-700"
+              >
+                {notices[params.notice]}
+              </p>
+            )}
           <LoginForm />
         </div>
         <p className="mt-14 text-xs text-slate-400">

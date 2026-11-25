@@ -2,12 +2,17 @@
 
 Sistema interno da **Govnex Soluções Digitais Ltda.**: fundação, autenticação, cadastros e contratações. Independente do site institucional, com destino futuro `app.govnex.com.br`.
 
+## Manual de uso
+
+Consulte o [manual do usuário](docs/MANUAL_USUARIO.md), com instruções de [Contratações](docs/manual/contratacoes.md) e [Contratos](docs/manual/contratos.md), exemplos, alertas e dúvidas frequentes.
+
 ## O que está implementado
 
 - Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4.
 - PostgreSQL, Prisma 7 e adaptador `pg`, compatível com Neon e funções Node.js da Vercel.
 - Auth.js, por meio da versão **estável `next-auth` 4**, com Credentials, JWT em cookie HttpOnly, CSRF e sessão de até 8 horas. Sem versão beta.
 - Hash Argon2id, autorização de administrador no servidor, verificação de usuário ativo e versão de sessão em cada acesso privado.
+- Gestão de usuários administradores, perfil e troca de senha pela interface; submenus Administração e Agenda operacional. Consulte [Usuários e agenda](docs/USUARIOS_AGENDA.md).
 - Login/logout, bootstrap administrativo por terminal, recuperação operacional por terminal, sem cadastro público ou senha padrão.
 - Cadastro unificado de organizações, com papéis órgão público e fornecedor e páginas próprias. CNPJ único, UASG, contatos, categorias, observações, ativação/desativação, busca, filtros, paginação, edição e exclusão confirmada.
 - Central de notificações com sino, leitura individual, alertas de sessão e planejamento automático de prazos. E-mail/WhatsApp desativados no MVP; consulte [configuração do agendamento](docs/NOTIFICACOES.md).
@@ -20,7 +25,7 @@ Sistema interno da **Govnex Soluções Digitais Ltda.**: fundação, autenticaç
 - Catálogo de materiais/serviços, fornecedores múltiplos e históricos, precificação decimal, ofertas vencedoras e resumo financeiro.
 - Importação JSON em lote com prévia e confirmação; exportação de dados de proposta em JSON/Markdown por arquivo.
 
-**Escopo atualizado:** gestão de cotações está fora do MVP. A proposta comercial será elaborada por agente externo com arquivos e modelo fornecidos pelo usuário, sem integração direta. Contratos, pedidos/fornecimentos e registro de notas/recebimentos estão implementados. A próxima etapa financeira será definida separadamente. Consulte o [planejamento atualizado](docs/PLANEJAMENTO.md) e os [formatos de arquivos](docs/ARQUIVOS_IMPORTACAO_EXPORTACAO.md).
+**Escopo atualizado:** gestão de cotações está fora do MVP. A proposta comercial será elaborada por agente externo com arquivos e modelo fornecidos pelo usuário, sem integração direta. Contratos, pedidos/fornecimentos e registro de notas/recebimentos estão implementados. A ampliação financeira está fora deste MVP. Consulte o [planejamento atualizado](docs/PLANEJAMENTO.md) e os [formatos de arquivos](docs/ARQUIVOS_IMPORTACAO_EXPORTACAO.md).
 
 ## Requisitos e instalação
 
@@ -121,7 +126,7 @@ scripts/                   Provisionamento e recuperação do administrador
 
 ## Modelo inicial do banco
 
-- **User:** nome, e-mail único normalizado, hash, perfil ADMIN/USER, ativo e versão de sessão.
+- **User:** nome, e-mail único normalizado, hash, perfil técnico ADMIN/USER, situação, versão de cadastro e versão de sessão. As contas gerenciadas pela interface recebem ADMIN.
 - **Organization:** identificação única por CNPJ opcional, papéis, UASG, dados comerciais e versão de edição.
 - **Opportunity (Contratação na interface):** identificação única, órgão vinculado, objeto, modalidade, processo, total calculado pelos itens, prazo, cinco situações, dois links e dados legados preservados.
 - **OpportunityItem:** número, descrição, unidade, quantidade, valor unitário e total; IDs estáveis, unicidade por contratação e checks/triggers de consistência.
@@ -130,7 +135,7 @@ scripts/                   Provisionamento e recuperação do administrador
 - **AuditLog:** autor, entidade, operação, antes/depois e data; nenhuma senha, hash ou token.
 - **LoginAttempt:** contagem atômica por chave HMAC do e-mail e janela de 15 minutos.
 
-O total dos itens de contratações usa `numeric(18,2)` e `Prisma.Decimal`, com valores transmitidos como strings e formatação sem perda de centavos. As entidades financeiras ainda não foram implementadas e deverão manter essa representação decimal em suas próprias migrations.
+O total dos itens de contratações usa `numeric(18,2)` e `Prisma.Decimal`, com valores transmitidos como strings e formatação sem perda de centavos. Contratos, notas e recebimentos já registrados mantêm essa representação decimal. A ampliação financeira está fora do MVP.
 
 ## Segurança e operação
 

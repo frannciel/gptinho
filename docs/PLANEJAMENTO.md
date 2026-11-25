@@ -28,7 +28,7 @@
 
 Regras, limites e implantação: [CONTRATOS.md](CONTRATOS.md).
 
-## Entrega atual — Contatos, Calendário e tarefas
+## Contatos, Calendário e tarefas — entrega anterior
 
 1. Tela independente de Contatos, com vínculo opcional à organização, pesquisa, filtros e exclusão protegida.
 2. Preservação dos IDs e contatos desvinculados, mantendo as relações com tarefas.
@@ -51,7 +51,7 @@ Esta entrega não inclui emissão fiscal, XML/NF-e, gestão documental, execuç�
 2. Revisar cadastros legados indicados como incompletos; conferir origem e valores antes de iniciar execução.
 3. Concluir a validação dos arquivos de importação e do modelo de proposta com dados reais.
 4. Corrigir os apontamentos dessa validação antes de ampliar o sistema.
-5. Próxima etapa: definir o escopo financeiro com o usuário (custos realizados, despesas/contas a pagar, estornos, conciliação e relatórios). A parte financeira foi expressamente adiada nesta entrega.
+5. Validar a gestão de usuários, o próprio perfil, a troca de senha e a navegação pelos submenus. A ampliação financeira está fora do MVP.
 6. Após aprovação, realizar o procedimento autorizado de publicação. Esta implementação não publica produção nem altera o Neon automaticamente.
 
 ### Ajustes solicitados — Contatos, Órgãos e Calendário
@@ -71,7 +71,7 @@ Esta entrega não inclui emissão fiscal, XML/NF-e, gestão documental, execuç�
 - Órgãos participantes distintos do gerenciador, sem duplicações.
 - Cadastro, edição e exclusão protegida de atas; auditoria e controle de versão.
 - Disponível inicialmente igual à quantidade da ata; baixas por contratos, pedidos e adesões ficam para definição posterior.
-- Migration e regras em [REGISTRO_PRECOS.md](REGISTRO_PRECOS.md). Financeiro permanece adiado.
+- Migration e regras em [REGISTRO_PRECOS.md](REGISTRO_PRECOS.md). A ampliação financeira está fora do MVP.
 
 ### Central de notificações — matriz aprovada
 
@@ -82,4 +82,15 @@ Esta entrega não inclui emissão fiscal, XML/NF-e, gestão documental, execuç�
 - Datas alteradas geram nova sequência; conclusão/arquivamento resolvem avisos; atrasos de entregas e tarefas geram aviso diário.
 - Estrutura de canais, preferências e entregas para e-mail/WhatsApp preparada, com envios desativados no MVP.
 - Endpoint e exemplo de cron preparados para operar com a aplicação fechada. Ativação depende de CRON_SECRET e de um agendador a cada minuto na implantação.
-- Migration apenas aditiva, testada localmente. Financeiro permanece para a próxima etapa.
+- Migration apenas aditiva, testada localmente. A ampliação financeira está fora do MVP.
+
+## Entrega atual — Usuários e Agenda operacional
+
+1. Usuários: listar, pesquisar, cadastrar, editar e ativar/desativar, com acesso de administrador para todas as contas gerenciadas.
+2. Meu perfil: alterar nome e e-mail; acesso também pela identificação na barra superior.
+3. Trocar senha: senha atual, nova senha e confirmação; encerramento das sessões após a troca.
+4. Proteção do último administrador ativo, e-mail único, hash seguro, auditoria sem credenciais e versões contra sobrescrita concorrente.
+5. Submenu Administração com as três telas de conta e submenu Agenda operacional com Calendário, Tarefas e Notificações. Sino preservado na barra superior.
+6. Migration aditiva, testes e procedimento de implantação em [USUARIOS_AGENDA.md](USUARIOS_AGENDA.md).
+
+As funcionalidades solicitadas ficam prontas para validação em homologação. O fechamento do MVP depende dessa validação, dos apontamentos restantes e da configuração operacional das notificações. A ampliação financeira não compõe o MVP.
