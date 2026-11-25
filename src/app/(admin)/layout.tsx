@@ -1,3 +1,4 @@
+import { NotificationBell } from "@/components/notification-bell";
 import { requireAdminPage } from "@/lib/authorization";
 import { SidebarFrame, SidebarToggle } from "@/components/sidebar-frame";
 import { Navigation } from "@/components/navigation";
@@ -21,9 +22,9 @@ export default async function AdminLayout({
       </a>
       <SidebarFrame>
         <header className="flex min-h-20 items-center justify-between gap-4 border-b border-slate-200 bg-white px-5 md:px-9">
-          <div className="flex items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <SidebarToggle />
-            <details className="relative lg:hidden">
+            <details className="relative shrink-0 lg:hidden">
               <summary
                 className="list-none rounded-lg p-2"
                 aria-label="Abrir menu"
@@ -34,8 +35,8 @@ export default async function AdminLayout({
                 <Navigation mobile />
               </div>
             </details>
-            <div>
-              <p className="text-sm font-semibold text-slate-800">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-800">
                 Ambiente de gestão
               </p>
               <p className="mt-1 hidden text-xs text-slate-400 sm:block">
@@ -43,12 +44,12 @@ export default async function AdminLayout({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 md:gap-5">
+          <div className="flex shrink-0 items-center gap-2 md:gap-5">
             <span className="hidden items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 text-[11px] font-semibold text-brand-700 md:flex">
               <ShieldCheck size={13} />
               Acesso protegido
             </span>
-            <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
+            <div className="flex items-center gap-3 border-l border-slate-200 pl-2 sm:pl-4">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#eaf0f1] text-xs font-bold text-slate-700">
                 {user.name
                   .split(" ")
@@ -64,6 +65,7 @@ export default async function AdminLayout({
                 <p className="text-[11px] text-slate-500">Administrador</p>
               </div>
             </div>
+            <NotificationBell />
             <Logout />
           </div>
         </header>
